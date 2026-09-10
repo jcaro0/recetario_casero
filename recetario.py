@@ -50,11 +50,12 @@ class Receta():
     def añadir_ingrediente(self,ingrediente:Ingrediente,cantidad:int,tipo_cantidad:str="gramos"):
         if ACRONIMOS.get(tipo_cantidad.lower()) and cantidad > 0:    
             self.lista_ingredientes[ingrediente] = (cantidad,tipo_cantidad)
-        else:
-            self.lista_ingredientes[ingrediente] = (-1,"N/a")
+            return 0
+        return 1
         
     def añadir_pasos(self,paso:str):
         self.lista_pasos.append(paso)
+        return 0
         
     def __str__(self):
         ingredientes_output = ""
