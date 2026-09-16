@@ -1,0 +1,22 @@
+services:
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./backend/uploads:/app/uploads
+
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7
+    restart: always
+
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
