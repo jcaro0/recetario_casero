@@ -1,0 +1,131 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Menú Semanal</title>
+
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Iconos Material Symbols -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded" rel="stylesheet">
+</head>
+<body>
+
+<header class="topbar">
+
+    <div class="logo">
+        🍽️ <span>Menú Semanal</span>
+    </div>
+
+    <button class="icon-button" id="shareMenuButton">
+        <span class="material-symbols-rounded">share</span>
+    </button>
+
+</header>
+
+<!-- Dropdown compartir -->
+
+<div class="dropdown hidden" id="shareDropdown">
+
+    <button onclick="shareMenu('copy')">
+        <span class="material-symbols-rounded">content_copy</span>
+        Copiar
+    </button>
+
+    <button onclick="shareMenu('whatsapp')">
+        <span class="material-symbols-rounded">chat</span>
+        WhatsApp
+    </button>
+
+    <button onclick="shareMenu('email')">
+        <span class="material-symbols-rounded">mail</span>
+        Email
+    </button>
+
+</div>
+
+
+<main class="container">
+
+    <section class="hero">
+
+        <h1>Tu menú de esta semana</h1>
+
+        <p>Las comidas se generan automáticamente y nunca se repiten.</p>
+
+        <button class="primary" id="generateButton">
+            <span class="material-symbols-rounded">autorenew</span>
+            Regenerar menú
+        </button>
+
+    </section>
+
+
+    <section id="weekGrid" class="week-grid">
+
+        <!-- Se rellenará desde JS -->
+
+    </section>
+
+</main>
+
+<!-- Navegación móvil -->
+
+<nav class="bottom-nav">
+
+    <a href="index.html" class="active">
+        <span class="material-symbols-rounded">calendar_month</span>
+        Menú
+    </a>
+
+    <a href="lista_compra.html">
+        <span class="material-symbols-rounded">shopping_cart</span>
+        Compra
+    </a>
+
+    <a href="agregar_recetas.html">
+        <span class="material-symbols-rounded">menu_book</span>
+        Recetas
+    </a>
+
+</nav>
+
+
+<!-- Modal -->
+
+<div id="modal" class="modal hidden">
+
+    <div class="modal-content">
+
+        <span class="material-symbols-rounded modal-icon">
+            warning
+        </span>
+
+        <h2>¿Generar un nuevo menú?</h2>
+
+        <p>
+            El menú actual se sustituirá por otro completamente aleatorio.
+        </p>
+
+        <div class="modal-buttons">
+
+            <button class="secondary" id="cancelModal">
+                Cancelar
+            </button>
+
+            <button class="danger" id="confirmModal">
+                Sí, regenerar
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script src="script.js"></script>
+
+</body>
+</html>

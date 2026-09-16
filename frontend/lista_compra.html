@@ -1,0 +1,100 @@
+
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>Lista Compra</title>
+
+<link rel="stylesheet" href="style.css">
+
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded"
+rel="stylesheet">
+
+</head>
+
+<body>
+
+<header class="topbar">
+
+    <div class="logo">
+        🛒 <span>Cesto de la compra</span>
+    </div>
+
+    <button class="icon-button" id="shareMenuButton">
+        <span class="material-symbols-rounded">share</span>
+    </button>
+
+</header>
+
+<div class="dropdown hidden" id="shareDropdown">
+
+    <button onclick="shareShopping('copy')">
+        <span class="material-symbols-rounded">content_copy</span>
+        Copiar
+    </button>
+
+    <button onclick="shareShopping('whatsapp')">
+        <span class="material-symbols-rounded">chat</span>
+        WhatsApp
+    </button>
+
+    <button onclick="shareShopping('email')">
+        <span class="material-symbols-rounded">mail</span>
+        Email
+    </button>
+
+</div>
+
+<main class="container">
+
+    <section class="hero shoppingHero">
+
+        <h1>Lista de compra semanal</h1>
+
+        <p>
+            Todos los ingredientes del menú de la semana agrupados automáticamente.
+        </p>
+
+    </section>
+
+    <section id="shoppingList" class="shopping-list">
+
+    </section>
+
+</main>
+
+<nav class="bottom-nav">
+
+    <a href="index.html">
+
+        <span class="material-symbols-rounded">calendar_month</span>
+        Menú
+
+    </a>
+
+    <a href="lista_compra.html" class="active">
+
+        <span class="material-symbols-rounded">shopping_cart</span>
+        Compra
+
+    </a>
+
+    <a href="agregar_recetas.html">
+
+        <span class="material-symbols-rounded">menu_book</span>
+        Recetas
+
+    </a>
+
+</nav>
+
+<script src="script.js"></script>
+
+</body>
+</html>

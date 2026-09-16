@@ -1,0 +1,130 @@
+
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>Recetas</title>
+
+<link rel="stylesheet" href="style.css">
+
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded"
+rel="stylesheet">
+
+</head>
+
+<body>
+
+<header class="topbar">
+
+    <div class="logo">
+        📖 <span>Mis recetas</span>
+    </div>
+
+</header>
+
+<main class="container">
+
+<section class="hero recipeHero">
+
+    <h1>Nueva receta</h1>
+
+    <p>Añade una receta con foto opcional e ingredientes.</p>
+
+</section>
+
+<form id="recipeForm" class="recipe-form">
+
+    <label>Nombre de la receta</label>
+
+    <input
+        id="recipeName"
+        required
+        placeholder="Ej. Lasaña de carne">
+
+    <label>Foto (opcional)</label>
+
+    <input
+        type="file"
+        id="recipeImage"
+        accept="image/*">
+
+    <div class="ingredients-header">
+
+        <h2>Ingredientes</h2>
+
+        <button
+            type="button"
+            id="addIngredient"
+            class="primary small">
+
+            <span class="material-symbols-rounded">add</span>
+
+            Añadir
+
+        </button>
+
+    </div>
+
+    <div id="ingredientList">
+
+    </div>
+
+    <button class="primary submitButton" type="submit">
+
+        <span class="material-symbols-rounded">save</span>
+
+        Guardar receta
+
+    </button>
+
+</form>
+
+<hr class="separator">
+
+<section>
+
+    <h2 class="sectionTitle">Recetas guardadas</h2>
+
+    <div id="recipesContainer" class="recipe-grid">
+
+    </div>
+
+</section>
+
+</main>
+
+<nav class="bottom-nav">
+
+    <a href="index.html">
+
+        <span class="material-symbols-rounded">calendar_month</span>
+        Menú
+
+    </a>
+
+    <a href="lista_compra.html">
+
+        <span class="material-symbols-rounded">shopping_cart</span>
+        Compra
+
+    </a>
+
+    <a href="agregar_recetas.html" class="active">
+
+        <span class="material-symbols-rounded">menu_book</span>
+        Recetas
+
+    </a>
+
+</nav>
+
+<script src="script.js"></script>
+
+</body>
+</html>
