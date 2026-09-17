@@ -1,5 +1,7 @@
-
-const API = "http://raspberrypi.local:8000";
+// El frontend se sirve desde el mismo Flask que expone la API,
+// así que las llamadas fetch("/menu"), fetch("/recipes")... son
+// relativas a quien esté sirviendo la página (localhost,
+// raspberrypi.local, o lo que sea) y no hace falta ninguna URL fija.
 
 // ---------- DÍAS ----------
 const DAYS = [
@@ -48,7 +50,7 @@ async function loadWeeklyMenu(){
 
     try{
 
-        const res = await fetch(API + "/menu");
+        const res = await fetch("/menu");
         const menu = await res.json();
 
         grid.innerHTML = "";
@@ -103,7 +105,7 @@ function setupModal(){
 
         modal.classList.add("hidden");
 
-        await fetch(API + "/menu/generate",{
+        await fetch("/menu/generate",{
             method:"POST"
         });
 
@@ -141,7 +143,7 @@ function setupShareDropdown(){
 
 async function shareMenu(type){
 
-    const res = await fetch(API+"/menu");
+    const res = await fetch("/menu");
     const menu = await res.json();
 
     let text = "🍽️ MENÚ SEMANAL\n\n";
@@ -159,7 +161,7 @@ async function shareMenu(type){
 
 async function shareShopping(type){
 
-    const res = await fetch(API+"/shopping-list");
+    const res = await fetch("/shopping-list");
     const shopping = await res.json();
 
     let text = "🛒 LISTA DE LA COMPRA\n\n";
@@ -208,7 +210,7 @@ async function loadShoppingList(){
 
     try{
 
-        const res = await fetch(API+"/shopping-list");
+        const res = await fetch("/shopping-list");
         const shopping = await res.json();
 
         container.innerHTML = "";
@@ -318,7 +320,7 @@ async function saveRecipe(e){
 
     form.append("ingredients",JSON.stringify(ingredients));
 
-    await fetch(API+"/recipes",{
+    await fetch("/recipes",{
 
         method:"POST",
         body:form
@@ -341,7 +343,7 @@ async function loadRecipes(){
 
     try{
 
-        const res = await fetch(API+"/recipes");
+        const res = await fetch("/recipes");
         const recipes = await res.json();
 
         list.innerHTML = "";
@@ -352,7 +354,7 @@ async function loadRecipes(){
                 <div class="recipe-card">
 
                     ${recipe.image ?
-                        `<img src="${API}/${recipe.image}" class="recipe-photo">`
+                        `<img src="/${recipe.image}" class="recipe-photo">`
                         :
                         `<div class="recipe-placeholder">🍲</div>`
                     }
@@ -395,7 +397,7 @@ async function deleteRecipe(id){
     if(!confirm("¿Eliminar receta?"))
         return;
 
-    await fetch(API+"/recipes/"+id,{
+    await fetch("/recipes/"+id,{
         method:"DELETE"
     });
 
