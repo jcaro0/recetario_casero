@@ -17,18 +17,11 @@ def get_redis() -> redis.Redis:
     """Devuelve un cliente Redis reutilizable (conexión perezosa)."""
     global _client
     if _client is None:
-        # redis-py comparte la misma clase para el cliente síncrono y el
-        # asíncrono, lo que a veces confunde a Pylance y le hace pensar que
-        # los métodos devuelven Awaitable. Con decode_responses=True y este
-        # cast fijamos el tipo correcto: es un cliente 100% síncrono.
-        _client = cast(
-            "redis.Redis",
-            redis.Redis(
+        _client = redis.Redis(
                 host=REDIS_HOST,
                 port=REDIS_PORT,
                 decode_responses=True,
-            ),
-        )
+            )
     return _client
 
 
