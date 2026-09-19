@@ -8,7 +8,7 @@
 <meta name="viewport"
 content="width=device-width, initial-scale=1.0">
 
-<title>Añadir receta</title>
+<title>Recetas</title>
 
 <link rel="stylesheet" href="style.css">
 
@@ -22,7 +22,7 @@ rel="stylesheet">
 <header class="topbar">
 
     <div class="logo">
-        📖 <span>Nueva receta</span>
+        📖 <span>Mis recetas</span>
     </div>
 
     <nav class="top-nav">
@@ -37,12 +37,12 @@ rel="stylesheet">
             Compra
         </a>
 
-        <a href="recetas.html" class="nav-link">
+        <a href="recetas.html" class="nav-link active">
             <span class="material-symbols-rounded">menu_book</span>
             Recetas
         </a>
 
-        <a href="agregar_recetas.html" class="nav-link active">
+        <a href="agregar_recetas.html" class="nav-link">
             <span class="material-symbols-rounded">add_circle</span>
             Añadir
         </a>
@@ -55,40 +55,15 @@ rel="stylesheet">
 
 <section class="hero recipeHero">
 
-    <h1>Nueva receta</h1>
+    <h1>Todas tus recetas</h1>
 
-    <p>Añádela con su nombre e ingredientes.</p>
+    <p>Toca una receta para ver sus ingredientes.</p>
 
 </section>
 
-<form id="recipeForm" class="recipe-form">
+<div id="recipesContainer" class="recipe-grid">
 
-    <label>Nombre de la receta</label>
-
-    <input
-        id="recipeName"
-        required
-        placeholder="Ej. Lasaña de carne">
-
-    <div class="ingredients-header">
-
-        <h2>Ingredientes</h2>
-
-    </div>
-
-    <div id="ingredientList">
-
-    </div>
-
-    <button class="primary submitButton" type="submit">
-
-        <span class="material-symbols-rounded">save</span>
-
-        Guardar receta
-
-    </button>
-
-</form>
+</div>
 
 </main>
 

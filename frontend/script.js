@@ -14,7 +14,41 @@ const DAYS = [
     "Domingo"
 ];
 
+// Día que se está editando en el modal de "elegir receta"
+let currentEditDay = null;
+
+// Caché de recetas cargadas para el modal de elegir receta (evita
+// pedirlas de nuevo cada vez que el usuario escribe en el buscador)
+let allRecipesCache = [];
+
 // ---------- INICIO ----------
+
+// Si habíamos hecho scroll hacia abajo (por ejemplo en la lista de
+// recetas o en el menú semanal), la transición de deslizamiento
+// entre páginas puede "saltar" o verse rayada porque la página
+// vieja se capturaba desplazada y la nueva siempre empieza arriba.
+// Subimos el scroll justo antes de navegar para que la animación
+// salga siempre limpia, también en la segunda navegación y
+// siguientes.
+document.addEventListener("click",(e)=>{
+
+    const link = e.target.closest("a[href]");
+    if(!link) return;
+    if(link.target === "_blank") return;
+
+    let url;
+    try{
+        url = new URL(link.href, location.href);
+    }catch{
+        return;
+    }
+
+    if(url.origin !== location.origin) return;
+
+    window.scrollTo(0,0);
+
+});
+
 document.addEventListener("DOMContentLoaded", () => {
 
     setupShareDropdown();
@@ -24,15 +58,21 @@ document.addEventListener("DOMContentLoaded", () => {
     if(page === "index.html" || page === ""){
         loadWeeklyMenu();
         setupModal();
+        setupChooseRecipeModal();
+        setupWeekGridEvents();
     }
 
     if(page === "lista_compra.html"){
         loadShoppingList();
     }
 
+    if(page === "recetas.html"){
+        loadRecipesView();
+        setupRecipeExpansion();
+    }
+
     if(page === "agregar_recetas.html"){
         setupRecipeForm();
-        loadRecipes();
     }
 
 });
@@ -57,10 +97,11 @@ async function loadWeeklyMenu(){
 
         DAYS.forEach(day=>{
 
-            const recipe = menu[day.toLowerCase()] || {};
+            const dayKey = day.toLowerCase();
+            const recipe = menu[dayKey] || {};
 
             grid.innerHTML += `
-                <div class="day-card">
+                <div class="day-card" draggable="true" data-day="${dayKey}">
 
                     <div class="day-header">
                         <h3>${day}</h3>
@@ -73,6 +114,11 @@ async function loadWeeklyMenu(){
                         <small>
                             ${recipe.ingredients?.length || 0} ingredientes
                         </small>
+                    </div>
+
+                    <div class="day-hint">
+                        <span class="material-symbols-rounded">swap_horiz</span>
+                        Toca para cambiar · arrastra para mover
                     </div>
 
                 </div>
@@ -88,7 +134,7 @@ async function loadWeeklyMenu(){
 
 }
 
-// ---------- Modal ----------
+// ---------- Modal: regenerar menú ----------
 
 function setupModal(){
 
@@ -112,6 +158,216 @@ function setupModal(){
         loadWeeklyMenu();
 
     }
+
+}
+
+// ---------- Modal: elegir receta para un día ----------
+
+function setupChooseRecipeModal(){
+
+    const modal = document.getElementById("chooseRecipeModal");
+    const closeBtn = document.getElementById("closeChooseModal");
+    const searchInput = document.getElementById("recipeSearchInput");
+
+    closeBtn.onclick = ()=> closeChooseRecipeModal();
+
+    // Tocar el fondo oscuro también cierra el modal
+    modal.addEventListener("click",(e)=>{
+        if(e.target === modal) closeChooseRecipeModal();
+    });
+
+    searchInput.addEventListener("input",()=>{
+        renderChooseRecipeList(searchInput.value);
+    });
+
+}
+
+async function openChooseRecipeModal(day){
+
+    currentEditDay = day;
+
+    const modal = document.getElementById("chooseRecipeModal");
+    const dayLabel = document.getElementById("chooseRecipeDay");
+    const searchInput = document.getElementById("recipeSearchInput");
+    const list = document.getElementById("chooseRecipeList");
+
+    dayLabel.textContent = capitalize(day);
+    searchInput.value = "";
+
+    modal.classList.remove("hidden");
+
+    list.innerHTML = "<p class=\"choose-recipe-empty\">Cargando recetas...</p>";
+
+    try{
+
+        const res = await fetch("/recipes");
+        allRecipesCache = await res.json();
+
+        renderChooseRecipeList("");
+
+    }catch{
+
+        list.innerHTML = "<p class=\"choose-recipe-empty\">No se pudieron cargar las recetas.</p>";
+
+    }
+
+    searchInput.focus();
+
+}
+
+function closeChooseRecipeModal(){
+    document.getElementById("chooseRecipeModal").classList.add("hidden");
+    currentEditDay = null;
+}
+
+function renderChooseRecipeList(query){
+
+    const list = document.getElementById("chooseRecipeList");
+    const q = query.trim().toLowerCase();
+
+    const filtered = allRecipesCache.filter(r=>
+        r.name.toLowerCase().includes(q)
+    );
+
+    if(allRecipesCache.length === 0){
+        list.innerHTML = `
+            <p class="choose-recipe-empty">
+                Todavía no tienes recetas guardadas.<br>Añade alguna primero.
+            </p>
+        `;
+        return;
+    }
+
+    if(filtered.length === 0){
+        list.innerHTML = "<p class=\"choose-recipe-empty\">No hay recetas que coincidan.</p>";
+        return;
+    }
+
+    list.innerHTML = filtered.map(r => `
+        <button class="choose-recipe-item" data-id="${r.id}">
+            <span class="choose-recipe-name">${r.name}</span>
+            <span class="choose-recipe-count">${r.ingredients.length} ingredientes</span>
+        </button>
+    `).join("");
+
+    list.querySelectorAll(".choose-recipe-item").forEach(btn=>{
+        btn.onclick = ()=> selectRecipeForDay(Number(btn.dataset.id));
+    });
+
+}
+
+async function selectRecipeForDay(recipeId){
+
+    if(!currentEditDay) return;
+
+    await fetch(`/menu/${encodeURIComponent(currentEditDay)}`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({recipe_id: recipeId})
+    });
+
+    closeChooseRecipeModal();
+    loadWeeklyMenu();
+
+}
+
+// ---------- Tocar y arrastrar tarjetas de día ----------
+
+function setupWeekGridEvents(){
+
+    const grid = document.getElementById("weekGrid");
+    if(!grid) return;
+
+    // Tocar una tarjeta (sin arrastrar) abre el selector de receta
+    grid.addEventListener("click",(e)=>{
+
+        const card = e.target.closest(".day-card");
+        if(!card) return;
+
+        openChooseRecipeModal(card.dataset.day);
+
+    });
+
+    // Arrastrar una tarjeta sobre otra intercambia sus recetas
+    grid.addEventListener("dragstart",(e)=>{
+
+        const card = e.target.closest(".day-card");
+        if(!card) return;
+
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", card.dataset.day);
+
+        card.classList.add("dragging");
+
+    });
+
+    grid.addEventListener("dragend",(e)=>{
+
+        const card = e.target.closest(".day-card");
+        if(card) card.classList.remove("dragging");
+
+        grid.querySelectorAll(".day-card.drag-over").forEach(c=>{
+            c.classList.remove("drag-over");
+        });
+
+    });
+
+    grid.addEventListener("dragover",(e)=>{
+
+        const card = e.target.closest(".day-card");
+        if(!card) return;
+
+        e.preventDefault();
+        card.classList.add("drag-over");
+
+    });
+
+    grid.addEventListener("dragleave",(e)=>{
+
+        const card = e.target.closest(".day-card");
+        if(card) card.classList.remove("drag-over");
+
+    });
+
+    grid.addEventListener("drop", async (e)=>{
+
+        const card = e.target.closest(".day-card");
+        if(!card) return;
+
+        e.preventDefault();
+        card.classList.remove("drag-over");
+
+        const fromDay = e.dataTransfer.getData("text/plain");
+        const toDay = card.dataset.day;
+
+        if(fromDay && toDay && fromDay !== toDay){
+
+            await fetch("/menu/swap",{
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({day1: fromDay, day2: toDay})
+            });
+
+            loadWeeklyMenu();
+
+        }
+
+    });
+
+}
+
+function capitalize(text){
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+// Formatea "cantidad + unidad" para mostrarlos, omitiendo lo que
+// falte (ambos son opcionales, pero si hay cantidad siempre hay
+// unidad porque el formulario lo exige).
+function formatQtyUnit(qty, unit){
+
+    if(qty === null || qty === undefined || qty === "") return "";
+
+    return ` - ${qty}${unit ? " " + unit : ""}`;
 
 }
 
@@ -151,7 +407,7 @@ async function shareMenu(type){
     DAYS.forEach(day=>{
 
         const recipe = menu[day.toLowerCase()];
-        text += `${day}: ${recipe.name}\n`;
+        text += `${day}: ${recipe?.name || "Sin receta"}\n`;
 
     });
 
@@ -213,6 +469,11 @@ async function loadShoppingList(){
         const res = await fetch("/shopping-list");
         const shopping = await res.json();
 
+        if(shopping.length === 0){
+            container.innerHTML = "<p>No hay nada en la lista todavía.</p>";
+            return;
+        }
+
         container.innerHTML = "";
 
         shopping.forEach(item=>{
@@ -224,7 +485,7 @@ async function loadShoppingList(){
 
                     <div class="shopping-info">
                         <strong>${item.name}</strong>
-                        <span>${item.qty} ${item.unit}</span>
+                        <span>${formatQtyUnit(item.qty, item.unit).replace(/^\s*-\s*/, "")}</span>
                     </div>
 
                 </label>
@@ -241,19 +502,16 @@ async function loadShoppingList(){
 }
 
 // =======================================================
-// RECETAS
+// AÑADIR RECETA
 // =======================================================
 
 function setupRecipeForm(){
 
-    const addIngredient = document.getElementById("addIngredient");
     const ingredientList = document.getElementById("ingredientList");
 
-    addIngredient.onclick = ()=>{
-
-        ingredientList.appendChild(createIngredientRow());
-
-    }
+    // Empezamos con una única fila "apagada": en cuanto se escribe
+    // el nombre del ingrediente, se activa y aparece otra debajo.
+    ingredientList.appendChild(createIngredientRow());
 
     document.getElementById("recipeForm")
         .addEventListener("submit",saveRecipe);
@@ -263,22 +521,72 @@ function setupRecipeForm(){
 function createIngredientRow(){
 
     const div = document.createElement("div");
-    div.className = "ingredient-row";
+
+    // "ghost" = fila apagada todavía sin escribir (gris/transparente).
+    // Se activa (blanco + borde marrón) en cuanto tiene nombre.
+    div.className = "ingredient-row ghost";
 
     div.innerHTML = `
-        <input placeholder="Ingrediente" class="ingredient-name">
+        <input placeholder="Nuevo ingrediente" class="ingredient-name">
 
-        <input placeholder="Cantidad"
+        <input placeholder="Cantidad (opcional)"
                class="ingredient-qty"
-               type="number">
+               type="number"
+               min="0"
+               step="any">
 
-        <input placeholder="Unidad"
-               class="ingredient-unit">
+        <select class="ingredient-unit">
+            <option value="">Unidad</option>
+            <option value="g">g · gramos</option>
+            <option value="kg">kg · kilogramos</option>
+            <option value="l">l · litros</option>
+            <option value="ml">ml · mililitros</option>
+            <option value="uds">uds · unidades</option>
+        </select>
 
         <button type="button" class="deleteIngredient">✕</button>
     `;
 
-    div.querySelector("button").onclick = ()=> div.remove();
+    const nameInput = div.querySelector(".ingredient-name");
+    const qtyInput = div.querySelector(".ingredient-qty");
+    const unitSelect = div.querySelector(".ingredient-unit");
+    const deleteButton = div.querySelector("button");
+
+    nameInput.addEventListener("input",()=>{
+
+        const hasText = nameInput.value.trim() !== "";
+        const list = document.getElementById("ingredientList");
+
+        div.classList.toggle("ghost", !hasText);
+
+        // En cuanto esta fila (la última) recibe su primer carácter,
+        // aparece una nueva fila apagada debajo, lista para el
+        // siguiente ingrediente.
+        if(hasText && div === list.lastElementChild){
+            list.appendChild(createIngredientRow());
+        }
+
+    });
+
+    qtyInput.addEventListener("input",()=>{
+        unitSelect.classList.remove("invalid");
+    });
+
+    deleteButton.onclick = ()=>{
+
+        const list = document.getElementById("ingredientList");
+
+        div.remove();
+
+        // Siempre debe quedar una fila apagada al final para poder
+        // seguir añadiendo ingredientes con naturalidad.
+        const last = list.lastElementChild;
+
+        if(!last || !last.classList.contains("ghost")){
+            list.appendChild(createIngredientRow());
+        }
+
+    }
 
     return div;
 
@@ -288,53 +596,70 @@ async function saveRecipe(e){
 
     e.preventDefault();
 
-    const form = new FormData();
-
-    form.append(
-        "name",
-        document.getElementById("recipeName").value
-    );
-
-    const image = document.getElementById("recipeImage").files[0];
-
-    if(image)
-        form.append("image",image);
-
     const ingredients = [];
+    let hasError = false;
 
     document.querySelectorAll(".ingredient-row").forEach(row=>{
 
+        const nameInput = row.querySelector(".ingredient-name");
+        const qtyInput = row.querySelector(".ingredient-qty");
+        const unitSelect = row.querySelector(".ingredient-unit");
+
+        const nameRaw = nameInput.value.trim();
+        const qtyRaw = qtyInput.value.trim();
+        const unitRaw = unitSelect.value;
+
+        unitSelect.classList.remove("invalid");
+
+        // Una fila sin nombre es la fila "fantasma" final sin usar:
+        // se ignora y se guardan solo las de arriba.
+        if(nameRaw === "") return;
+
+        // La cantidad y la unidad son opcionales, pero si hay
+        // cantidad, la unidad (del selector) es obligatoria.
+        if(qtyRaw !== "" && unitRaw === ""){
+            unitSelect.classList.add("invalid");
+            hasError = true;
+            return;
+        }
+
         ingredients.push({
-
-            name: row.querySelector(".ingredient-name").value,
-
-            qty: Number(
-                row.querySelector(".ingredient-qty").value
-            ),
-
-            unit: row.querySelector(".ingredient-unit").value
-
+            name: nameRaw,
+            qty: qtyRaw === "" ? null : Number(qtyRaw),
+            unit: unitRaw === "" ? null : unitRaw
         });
 
     });
 
-    form.append("ingredients",JSON.stringify(ingredients));
+    if(hasError){
+        alert("Si indicas una cantidad, selecciona también la unidad.");
+        return;
+    }
 
     await fetch("/recipes",{
 
         method:"POST",
-        body:form
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+            name: document.getElementById("recipeName").value,
+            ingredients
+        })
 
     });
 
     document.getElementById("recipeForm").reset();
-    document.getElementById("ingredientList").innerHTML="";
 
-    loadRecipes();
+    const ingredientList = document.getElementById("ingredientList");
+    ingredientList.innerHTML = "";
+    ingredientList.appendChild(createIngredientRow());
 
 }
 
-async function loadRecipes(){
+// =======================================================
+// VER RECETAS (recetas.html)
+// =======================================================
+
+async function loadRecipesView(){
 
     const list = document.getElementById("recipesContainer");
     if(!list) return;
@@ -346,49 +671,69 @@ async function loadRecipes(){
         const res = await fetch("/recipes");
         const recipes = await res.json();
 
-        list.innerHTML = "";
+        if(recipes.length === 0){
+            list.innerHTML = "<p>Todavía no has guardado ninguna receta.</p>";
+            return;
+        }
 
-        recipes.forEach(recipe=>{
+        list.innerHTML = recipes.map(recipe=>`
+            <div class="recipe-card" data-id="${recipe.id}">
 
-            list.innerHTML += `
-                <div class="recipe-card">
+                <div class="recipe-card-header">
 
-                    ${recipe.image ?
-                        `<img src="/${recipe.image}" class="recipe-photo">`
-                        :
-                        `<div class="recipe-placeholder">🍲</div>`
-                    }
+                    <span class="recipe-icon">🍲</span>
 
-                    <div class="recipe-content">
-
+                    <div>
                         <h3>${recipe.name}</h3>
-
-                        <ul>
-                            ${recipe.ingredients.map(i=>`
-                                <li>${i.name} - ${i.qty} ${i.unit}</li>
-                            `).join("")}
-                        </ul>
-
+                        <small>${recipe.ingredients.length} ingredientes</small>
                     </div>
 
-                    <button
-                        class="deleteRecipe"
-                        onclick="deleteRecipe(${recipe.id})">
-
-                        <span class="material-symbols-rounded">delete</span>
-
-                    </button>
-
                 </div>
-            `;
 
-        });
+                <button
+                    class="deleteRecipe"
+                    onclick="deleteRecipe(${recipe.id})">
+
+                    <span class="material-symbols-rounded">delete</span>
+
+                </button>
+
+                <ul class="ingredients-panel">
+                    ${recipe.ingredients.map(i=>`
+                        <li>${i.name}${formatQtyUnit(i.qty, i.unit)}</li>
+                    `).join("")}
+                </ul>
+
+            </div>
+        `).join("");
 
     }catch{
 
         list.innerHTML = "<p>Error.</p>";
 
     }
+
+}
+
+function setupRecipeExpansion(){
+
+    // Un solo listener en el documento: si tocas dentro de una tarjeta
+    // (que no sea el botón de borrar) se abre/cierra; si tocas fuera,
+    // se cierra la que estuviera abierta. Así imitamos "focus/unfocus"
+    // de forma fiable también en móvil.
+    document.addEventListener("click",(e)=>{
+
+        if(e.target.closest(".deleteRecipe")) return;
+
+        const card = e.target.closest(".recipe-card");
+
+        document.querySelectorAll(".recipe-card.expanded").forEach(c=>{
+            if(c !== card) c.classList.remove("expanded");
+        });
+
+        if(card) card.classList.toggle("expanded");
+
+    });
 
 }
 
@@ -401,6 +746,6 @@ async function deleteRecipe(id){
         method:"DELETE"
     });
 
-    loadRecipes();
+    loadRecipesView();
 
 }

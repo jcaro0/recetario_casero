@@ -86,5 +86,28 @@ def set_menu_day(day, recipe_id):
     get_redis().hset("menu", day, recipe_id)
 
 
+def swap_menu_days(day1, day2):
+    """Intercambia la receta asignada a dos días (usado por el drag & drop)."""
+    r = get_redis()
+    raw = cast(dict, r.hgetall("menu"))
+
+    val1 = raw.get(day1)
+    val2 = raw.get(day2)
+
+    pipe = r.pipeline()
+
+    if val2 is not None:
+        pipe.hset("menu", day1, val2)
+    else:
+        pipe.hdel("menu", day1)
+
+    if val1 is not None:
+        pipe.hset("menu", day2, val1)
+    else:
+        pipe.hdel("menu", day2)
+
+    pipe.execute()
+
+
 def clear_menu():
     get_redis().delete("menu")

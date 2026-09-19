@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -18,6 +17,30 @@
     <div class="logo">
         🍽️ <span>Menú Semanal</span>
     </div>
+
+    <nav class="top-nav">
+
+        <a href="index.html" class="nav-link active">
+            <span class="material-symbols-rounded">calendar_month</span>
+            Menú
+        </a>
+
+        <a href="lista_compra.html" class="nav-link">
+            <span class="material-symbols-rounded">shopping_cart</span>
+            Compra
+        </a>
+
+        <a href="recetas.html" class="nav-link">
+            <span class="material-symbols-rounded">menu_book</span>
+            Recetas
+        </a>
+
+        <a href="agregar_recetas.html" class="nav-link">
+            <span class="material-symbols-rounded">add_circle</span>
+            Añadir
+        </a>
+
+    </nav>
 
     <button class="icon-button" id="shareMenuButton">
         <span class="material-symbols-rounded">share</span>
@@ -71,26 +94,35 @@
 
 </main>
 
-<!-- Navegación móvil -->
+<!-- Modal: elegir receta para un día -->
 
-<nav class="bottom-nav">
+<div id="chooseRecipeModal" class="modal hidden">
 
-    <a href="index.html" class="active">
-        <span class="material-symbols-rounded">calendar_month</span>
-        Menú
-    </a>
+    <div class="modal-content big">
 
-    <a href="lista_compra.html">
-        <span class="material-symbols-rounded">shopping_cart</span>
-        Compra
-    </a>
+        <div class="modal-header">
 
-    <a href="agregar_recetas.html">
-        <span class="material-symbols-rounded">menu_book</span>
-        Recetas
-    </a>
+            <h2>Cambiar receta de <span id="chooseRecipeDay"></span></h2>
 
-</nav>
+            <button class="icon-button" id="closeChooseModal">
+                <span class="material-symbols-rounded">close</span>
+            </button>
+
+        </div>
+
+        <input
+            type="text"
+            id="recipeSearchInput"
+            class="search-input"
+            placeholder="Buscar receta...">
+
+        <div id="chooseRecipeList" class="choose-recipe-list">
+
+        </div>
+
+    </div>
+
+</div>
 
 
 <!-- Modal -->
