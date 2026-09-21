@@ -16,7 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/backend"
 FRONTEND_DIR="$SCRIPT_DIR/frontend"
-VENV_DIR="$BACKEND_DIR/venv"
+VENV_DIR="$SCRIPT_DIR/.venv"
 REDIS_DATA_DIR="$SCRIPT_DIR/redis-data"
 
 export REDIS_HOST="${REDIS_HOST:-localhost}"
@@ -100,7 +100,7 @@ source "$VENV_DIR/bin/activate"
 
 echo "→ Comprobando dependencias de Python..."
 pip install --quiet --upgrade pip
-pip install --quiet -r "$BACKEND_DIR/requirements.txt"
+pip install --quiet -r "$SCRIPT_DIR/requirements.txt"
 
 # -----------------------------------------------------------
 # 3. Backend Flask (sirve también el frontend)
@@ -108,7 +108,7 @@ pip install --quiet -r "$BACKEND_DIR/requirements.txt"
 
 export FRONTEND_FOLDER="$FRONTEND_DIR"
 export FLASK_DEBUG="${FLASK_DEBUG:-0}"
-export PORT="${PORT:-8000}"
+export PORT="${PORT:-80}"
 
 IP_LOCAL="$(hostname -I 2>/dev/null | awk '{print $1}')"
 

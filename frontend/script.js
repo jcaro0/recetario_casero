@@ -9,9 +9,7 @@ const DAYS = [
     "Martes",
     "Miércoles",
     "Jueves",
-    "Viernes",
-    "Sábado",
-    "Domingo"
+    "Viernes"
 ];
 
 // Día que se está editando en el modal de "elegir receta"

@@ -331,6 +331,7 @@ button:hover{
 
     position:absolute;
     top:72px;
+    z-index: 1;
     right:20px;
 
     width:180px;
