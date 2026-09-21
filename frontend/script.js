@@ -503,43 +503,34 @@ async function loadShoppingList(){
 // AÑADIR RECETA
 // =======================================================
 
-function setupRecipeForm(){
-
+function setupRecipeForm() {
     const ingredientList = document.getElementById("ingredientList");
-
-    // Empezamos con una única fila "apagada": en cuanto se escribe
-    // el nombre del ingrediente, se activa y aparece otra debajo.
     ingredientList.appendChild(createIngredientRow());
 
     document.getElementById("recipeForm")
-        .addEventListener("submit",saveRecipe);
-
+        .addEventListener("submit", saveRecipe);
 }
 
-function createIngredientRow(){
-
+function createIngredientRow() {
     const div = document.createElement("div");
-
-    // "ghost" = fila apagada todavía sin escribir (gris/transparente).
-    // Se activa (blanco + borde marrón) en cuanto tiene nombre.
     div.className = "ingredient-row ghost";
 
     div.innerHTML = `
         <input placeholder="Nuevo ingrediente" class="ingredient-name">
 
-        <input placeholder="Cantidad (opcional)"
+        <input placeholder="Cantidad"
                class="ingredient-qty"
                type="number"
                min="0"
                step="any">
 
         <select class="ingredient-unit">
-            <option value="">Unidad</option>
+            <option value="">Default</option>
             <option value="g">g · gramos</option>
-            <option value="kg">kg · kilogramos</option>
-            <option value="l">l · litros</option>
             <option value="ml">ml · mililitros</option>
             <option value="uds">uds · unidades</option>
+            <option value="cda">cda · cucharada</option>
+            <option value="taza">taza · tazas</option>
         </select>
 
         <button type="button" class="deleteIngredient">✕</button>
@@ -550,99 +541,84 @@ function createIngredientRow(){
     const unitSelect = div.querySelector(".ingredient-unit");
     const deleteButton = div.querySelector("button");
 
-    nameInput.addEventListener("input",()=>{
-
+    nameInput.addEventListener("input", () => {
         const hasText = nameInput.value.trim() !== "";
         const list = document.getElementById("ingredientList");
 
         div.classList.toggle("ghost", !hasText);
 
-        // En cuanto esta fila (la última) recibe su primer carácter,
-        // aparece una nueva fila apagada debajo, lista para el
-        // siguiente ingrediente.
-        if(hasText && div === list.lastElementChild){
+        if (hasText && div === list.lastElementChild) {
             list.appendChild(createIngredientRow());
         }
-
     });
 
-    qtyInput.addEventListener("input",()=>{
+    qtyInput.addEventListener("input", () => {
         unitSelect.classList.remove("invalid");
     });
 
-    deleteButton.onclick = ()=>{
+    // Si se selecciona una unidad sin haber escrito cantidad previa,
+    // regresa a Default ("") automáticamente.
+    unitSelect.addEventListener("change", () => {
+        if (qtyInput.value.trim() === "") {
+            unitSelect.value = "";
+        }
+        unitSelect.classList.remove("invalid");
+    });
 
+    deleteButton.onclick = () => {
         const list = document.getElementById("ingredientList");
-
         div.remove();
 
-        // Siempre debe quedar una fila apagada al final para poder
-        // seguir añadiendo ingredientes con naturalidad.
         const last = list.lastElementChild;
-
-        if(!last || !last.classList.contains("ghost")){
+        if (!last || !last.classList.contains("ghost")) {
             list.appendChild(createIngredientRow());
         }
-
-    }
+    };
 
     return div;
-
 }
 
-async function saveRecipe(e){
-
+async function saveRecipe(e) {
     e.preventDefault();
 
     const ingredients = [];
-    let hasError = false;
 
-    document.querySelectorAll(".ingredient-row").forEach(row=>{
-
+    document.querySelectorAll(".ingredient-row").forEach(row => {
         const nameInput = row.querySelector(".ingredient-name");
         const qtyInput = row.querySelector(".ingredient-qty");
         const unitSelect = row.querySelector(".ingredient-unit");
 
         const nameRaw = nameInput.value.trim();
         const qtyRaw = qtyInput.value.trim();
-        const unitRaw = unitSelect.value;
+        let unitRaw = unitSelect.value;
 
-        unitSelect.classList.remove("invalid");
+        // Fila vacía al final, se descarta
+        if (nameRaw === "") return;
 
-        // Una fila sin nombre es la fila "fantasma" final sin usar:
-        // se ignora y se guardan solo las de arriba.
-        if(nameRaw === "") return;
-
-        // La cantidad y la unidad son opcionales, pero si hay
-        // cantidad, la unidad (del selector) es obligatoria.
-        if(qtyRaw !== "" && unitRaw === ""){
-            unitSelect.classList.add("invalid");
-            hasError = true;
+        // Si no hay cantidad, no se guarda ni cantidad ni unidad
+        if (qtyRaw === "") {
+            ingredients.push({
+                name: nameRaw,
+                qty: null,
+                unit: null
+            });
             return;
         }
 
         ingredients.push({
             name: nameRaw,
-            qty: qtyRaw === "" ? null : Number(qtyRaw),
+            qty: Number(qtyRaw),
             unit: unitRaw === "" ? null : unitRaw
         });
-
     });
 
-    if(hasError){
-        alert("Si indicas una cantidad, selecciona también la unidad.");
-        return;
-    }
-
-    await fetch("/recipes",{
-
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
+    await fetch("/recipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             name: document.getElementById("recipeName").value,
             ingredients
         })
-
     });
 
     document.getElementById("recipeForm").reset();
@@ -650,7 +626,6 @@ async function saveRecipe(e){
     const ingredientList = document.getElementById("ingredientList");
     ingredientList.innerHTML = "";
     ingredientList.appendChild(createIngredientRow());
-
 }
 
 // =======================================================

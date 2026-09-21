@@ -59,7 +59,7 @@ body{
 
     position:sticky;
     top:0;
-    z-index:100;
+    z-index:10;
 
     display:flex;
     flex-wrap:wrap;
@@ -84,27 +84,6 @@ body{
     color:var(--brown-darker);
 
     flex:1 1 auto;
-
-}
-
-.icon-button{
-
-    width:44px;
-    height:44px;
-
-    border:none;
-    border-radius:50%;
-
-    background:var(--yellow-pale);
-    color:var(--brown-dark);
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    cursor:pointer;
-
-    order:2;
 
 }
 
@@ -158,6 +137,20 @@ body{
        "píldora" de una posición a otra al navegar (View Transitions). */
     view-transition-name:navIndicator;
 
+}
+
+.nav-link:hover{
+    color: #8f5d4a;
+    background:#f7e4dc;
+
+    scale: 107%;
+    transform:translateY(-2px);
+    transition:all 500ms;
+}
+
+.nav-link.active:hover{
+    color: #6d4325;
+    background:#e9c86c;
 }
 
 /* Hero */
@@ -326,23 +319,59 @@ button:hover{
 }
 
 /* Dropdown compartir */
+.icon-button {
 
-.dropdown{
+    width:44px;
+    height:44px;
 
-    position:absolute;
-    top:72px;
-    z-index: 1;
-    right:20px;
+    border:none;
+    border-radius:50%;
 
-    width:180px;
+    background:var(--yellow-pale);
+    color:var(--brown-dark);
 
-    background:var(--surface);
+    display:flex;
+    align-items:center;
+    justify-content:center;
 
-    border-radius:18px;
-    box-shadow:var(--shadow);
+    cursor:pointer;
 
-    overflow:hidden;
+    order:2;
 
+}
+
+.icon-button:hover {
+    scale: 110%;
+    transform:translateY(-5px);
+    color:var(--brown-darker);
+    background:#e7d2a6;
+    transition:all 500ms;
+}
+
+.dropdown {
+    position: absolute;
+    top: 65px;
+    z-index: 99;
+    right: 20px;
+    width: 180px;
+    background: #fcf4e3;
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+
+    /* Estado visible por defecto */
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+    transition: opacity 500ms ease, transform 500ms ease;
+}
+
+/* Estado oculto cuando tiene la clase .hidden */
+.dropdown.hidden {
+    display: block !important; /* Anula el display: none si lo tenías definido de forma global */
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none; /* Evita que se pueda hacer clic mientras está invisible */
 }
 
 .dropdown button{
@@ -361,7 +390,7 @@ button:hover{
 }
 
 .dropdown button:hover{
-    background:var(--yellow-pale);
+    background:var(--yellow-light);
 }
 
 /* Modal */
@@ -590,106 +619,114 @@ button:hover{
 
 /* ========= FORMULARIO RECETAS ========= */
 
-.recipe-form{
-    display:flex;
-    flex-direction:column;
-    gap:14px;
+.recipe-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
 }
 
-.recipe-form label{
-    font-weight:600;
-    color:var(--brown-darker);
+.recipe-form label {
+    font-weight: 600;
+    color: var(--brown-darker);
 }
 
-.recipe-form input{
-    padding:14px;
-    border-radius:14px;
-    border:1px solid #E2D2BC;
-    font-size:15px;
-    background:var(--surface);
-    color:var(--text);
+.recipe-form input {
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid #E2D2BC;
+    font-size: 15px;
+    background: var(--surface);
+    color: var(--text);
 }
 
-.ingredients-header{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    margin-top:20px;
+.ingredients-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
 }
 
-.primary.small{
-    padding:10px 14px;
-    font-size:14px;
+.primary.small {
+    padding: 10px 14px;
+    font-size: 14px;
 }
 
 /* Ingrediente */
 
-.ingredient-row{
-    display:grid;
-    grid-template-columns:2fr 1fr 1fr 45px;
-    gap:8px;
-    margin-bottom:10px;
+.ingredient-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 42px;
+    gap: 8px;
+    margin-bottom: 10px;
+    align-items: center;
 }
 
 .ingredient-row input,
-.ingredient-row select{
-    padding:12px;
-    border-radius:14px;
-    border:1.5px solid var(--brown);
-    font-size:15px;
-    background:var(--surface);
-    color:var(--text);
-    font-family:inherit;
-    transition:background-color .2s ease, border-color .2s ease, color .2s ease;
+.ingredient-row select {
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1.5px solid var(--brown);
+    font-size: 15px;
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    box-sizing: border-box;
+    transition: background-color .2s ease, border-color .2s ease, color .2s ease;
 }
 
-/* Fila "fantasma": todavía no se ha escrito nada en ella.
-   Apagada, en gris translúcido, invitando a escribir el
-   siguiente ingrediente. */
-
+/* Fila fantasma */
 .ingredient-row.ghost input,
-.ingredient-row.ghost select{
-    background:rgba(124,109,94,.08);
-    border-color:#9A8D7D;
-    color:var(--muted);
+.ingredient-row.ghost select {
+    background: rgba(124, 109, 94, .08);
+    border-color: #9A8D7D;
+    color: var(--muted);
 }
 
-.ingredient-row.ghost input::placeholder{
-    color:var(--muted);
+.ingredient-row.ghost input::placeholder {
+    color: var(--muted);
 }
 
-.ingredient-row.ghost .deleteIngredient{
-    opacity:.4;
+.ingredient-row.ghost .deleteIngredient {
+    opacity: .4;
 }
 
-.ingredient-unit.invalid{
-    border-color:var(--danger);
-    box-shadow:0 0 0 2px rgba(224,102,92,.18);
+.ingredient-unit.invalid {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 2px rgba(224, 102, 92, .18);
 }
 
-.deleteIngredient{
-    background:#F7DEDA;
-    color:#B9463C;
-    border-radius:12px;
+.deleteIngredient {
+    background: #F7DEDA;
+    color: #B9463C;
+    border: none;
+    border-radius: 12px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 15px;
 }
 
 /* Guardar */
 
-.submitButton{
-    justify-content:center;
-    margin-top:10px;
+.submitButton {
+    justify-content: center;
+    margin-top: 10px;
 }
 
 /* Separador */
 
-.separator{
-    margin:35px 0;
-    border:none;
-    border-top:1px solid #E9DCC7;
+.separator {
+    margin: 35px 0;
+    border: none;
+    border-top: 1px solid #E9DCC7;
 }
 
-.sectionTitle{
-    margin-bottom:20px;
+.sectionTitle {
+    margin-bottom: 20px;
 }
 
 /* ========= TARJETAS RECETAS ========= */
@@ -848,24 +885,30 @@ header.topbar{
 
 /* ========= RESPONSIVE ========= */
 
-@media (max-width:600px){
-
-    .ingredient-row{
-        grid-template-columns:1fr;
+@media (max-width: 600px) {
+    .ingredient-row {
+        grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 1.1fr) 36px;
+        gap: 5px;
     }
 
-    .deleteIngredient{
-        height:44px;
+    .ingredient-row input,
+    .ingredient-row select {
+        padding: 9px 6px;
+        font-size: 13px;
+        border-radius: 10px;
     }
 
+    .deleteIngredient {
+        height: 38px;
+        border-radius: 10px;
+        padding: 0;
+    }
 }
 
-@media (min-width:900px){
-
-    .recipe-grid{
-        display:grid;
-        grid-template-columns:repeat(2,1fr);
-        gap:20px;
+@media (min-width: 900px) {
+    .recipe-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
     }
-
 }

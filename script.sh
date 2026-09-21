@@ -25,6 +25,12 @@ export REDIS_PORT="${REDIS_PORT:-6379}"
 STARTED_REDIS=0
 
 cleanup() {
+    
+    if [ "${CLEANUP_DONE:-0}" = "1" ]; then
+        return
+    fi
+    CLEANUP_DONE=1
+
     if [ "$STARTED_REDIS" = "1" ]; then
         echo ""
         echo "Deteniendo redis-server (con guardado a disco) ..."
