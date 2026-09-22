@@ -1,0 +1,124 @@
+.recipeHero {
+    background: linear-gradient(135deg, var(--brown), #C79A6C);
+}
+
+.recipe-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.recipe-form label {
+    font-weight: 600;
+    color: var(--brown-darker);
+}
+
+.recipe-form input {
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid #E2D2BC;
+    font-size: 15px;
+    background: var(--surface);
+    color: var(--text);
+}
+
+.ingredients-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+}
+
+.primary.small {
+    padding: 10px 14px;
+    font-size: 14px;
+}
+
+.ingredient-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 42px;
+    gap: 8px;
+    margin-bottom: 10px;
+    align-items: center;
+}
+
+.ingredient-row input, 
+.ingredient-row select {
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1.5px solid var(--brown);
+    font-size: 15px;
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    box-sizing: border-box;
+    transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+}
+
+.ingredient-row.ghost input, 
+.ingredient-row.ghost select {
+    background: rgba(124, 109, 94, .08);
+    border-color: #9A8D7D;
+    color: var(--muted);
+}
+
+.ingredient-row.ghost input::placeholder {
+    color: var(--muted);
+}
+
+.ingredient-row.ghost .deleteIngredient {
+    opacity: .4;
+}
+
+.ingredient-unit.invalid {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 2px rgba(224, 102, 92, .18);
+}
+
+.deleteIngredient {
+    background: #F7DEDA;
+    color: #B9463C;
+    border: none;
+    border-radius: 12px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 15px;
+}
+
+.submitButton {
+    justify-content: center;
+    margin-top: 10px;
+}
+
+.separator {
+    margin: 35px 0;
+    border: none;
+    border-top: 1px solid #E9DCC7;
+}
+
+.sectionTitle {
+    margin-bottom: 20px;
+}
+
+@media (max-width: 600px) {
+    .ingredient-row {
+        grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 1.1fr) 36px;
+        gap: 5px;
+    }
+    .ingredient-row input,
+    .ingredient-row select {
+        padding: 9px 6px;
+        font-size: 13px;
+        border-radius: 10px;
+    }
+    .deleteIngredient {
+        height: 38px;
+        border-radius: 10px;
+        padding: 0;
+    }
+}

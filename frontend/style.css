@@ -1,353 +1,203 @@
-:root{
-
-    --brown:#A9754F;
-    --brown-dark:#7C5334;
-    --brown-darker:#5C3D26;
-
-    --yellow:#EAB854;
-    --yellow-light:#F6DFA0;
-    --yellow-pale:#FBEDD0;
-
-    --background:#FBF3E7;
-    --surface:#FFFCF6;
-
-    --text:#4A3526;
-    --muted:#9C8672;
-
-    --danger:#E0665C;
-
-    --shadow:0 10px 30px rgba(124,83,52,.10);
-
-    --radius:18px;
-
+:root {
+    --brown: #A9754F;
+    --brown-dark: #7C5334;
+    --brown-darker: #5C3D26;
+    --yellow: #EAB854;
+    --yellow-light: #F6DFA0;
+    --yellow-pale: #FBEDD0;
+    --background: #FBF3E7;
+    --surface: #FFFCF6;
+    --text: #4A3526;
+    --muted: #9C8672;
+    --danger: #E0665C;
+    --shadow: 0 10px 30px rgba(124,83,52,.10);
+    --radius: 18px;
 }
 
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
 
-html{
-    overflow-x:hidden;
+html {
+    overflow-x: hidden;
 }
 
-body{
-
-    background:var(--background);
-    font-family:Inter,system-ui,sans-serif;
-    color:var(--text);
-
+body {
+    background: var(--background);
+    font-family: Inter, system-ui, sans-serif;
+    color: var(--text);
 }
 
-.container{
-    padding:20px;
-    max-width:900px;
-    margin:auto;
-
-    /* Todas las páginas comparten una altura mínima parecida para
-       que el deslizamiento no "salte" cuando una tiene mucho menos
-       contenido que otra (por ejemplo, un error al cargar el menú). */
-    min-height:70vh;
+.container {
+    padding: 20px;
+    max-width: 900px;
+    margin: auto;
+    min-height: 70vh;
 }
 
 /* ========================================================
-   HEADER + NAVEGACIÓN (todo integrado arriba)
+   HEADER + NAVEGACIÓN
    ======================================================== */
-
-.topbar{
-
-    position:sticky;
-    top:0;
-    z-index:10;
-
-    display:flex;
-    flex-wrap:wrap;
-    justify-content:space-between;
-    align-items:center;
-    gap:10px 16px;
-
-    background:var(--surface);
-    padding:14px 20px;
-
-    box-shadow:var(--shadow);
-
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px 16px;
+    background: var(--surface);
+    padding: 14px 20px;
+    box-shadow: var(--shadow);
 }
 
-.logo{
-
-    font-weight:700;
-    display:flex;
-    gap:10px;
-    align-items:center;
-    font-size:20px;
-    color:var(--brown-darker);
-
-    flex:1 1 auto;
-
+.logo {
+    font-weight: 700;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font-size: 20px;
+    color: var(--brown-darker);
+    flex: 1 1 auto;
 }
 
-.material-symbols-rounded{
-    font-size:24px;
+.material-symbols-rounded {
+    font-size: 24px;
 }
 
-/* Navegación dentro del header */
-
-.top-nav{
-
-    order:3;
-    flex-basis:100%;
-
-    display:flex;
-    justify-content:space-around;
-    gap:4px;
-
+.top-nav {
+    order: 3;
+    flex-basis: 100%;
+    display: flex;
+    justify-content: space-around;
+    gap: 4px;
 }
 
-.nav-link{
-
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    gap:2px;
-
-    text-decoration:none;
-    color:var(--muted);
-
-    padding:8px 14px;
-    border-radius:14px;
-
-    font-size:11px;
-    font-weight:700;
-
-    transition:color .2s;
-
+.nav-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    text-decoration: none;
+    color: var(--muted);
+    padding: 8px 14px;
+    border-radius: 14px;
+    font-size: 11px;
+    font-weight: 700;
+    transition: color .2s;
 }
 
-.nav-link .material-symbols-rounded{
-    font-size:22px;
+.nav-link .material-symbols-rounded {
+    font-size: 22px;
 }
 
-.nav-link.active{
-
-    color:var(--brown-darker);
-    background:var(--yellow-light);
-
-    /* Nombre compartido entre páginas: el navegador desliza esta
-       "píldora" de una posición a otra al navegar (View Transitions). */
-    view-transition-name:navIndicator;
-
+.nav-link.active {
+    color: var(--brown-darker);
+    background: var(--yellow-light);
+    view-transition-name: navIndicator;
 }
 
-.nav-link:hover{
+.nav-link:hover {
     color: #8f5d4a;
-    background:#f7e4dc;
-
+    background: #f7e4dc;
     scale: 107%;
-    transform:translateY(-2px);
-    transition:all 500ms;
+    transform: translateY(-2px);
+    transition: all 500ms;
 }
 
-.nav-link.active:hover{
+.nav-link.active:hover {
     color: #6d4325;
-    background:#e9c86c;
+    background: #e9c86c;
 }
 
-/* Hero */
-
-.hero{
-
-    background:linear-gradient(135deg,var(--brown),var(--yellow));
-
-    color:white;
-    padding:28px;
-    border-radius:25px;
-
-    margin-bottom:30px;
-
+/* ========================================================
+   HERO BASE
+   ======================================================== */
+.hero {
+    background: linear-gradient(135deg, var(--brown), var(--yellow));
+    color: white;
+    padding: 28px;
+    border-radius: 25px;
+    margin-bottom: 30px;
 }
 
-.hero h1{
-    font-size:30px;
-    margin-bottom:8px;
+.hero h1 {
+    font-size: 30px;
+    margin-bottom: 8px;
 }
 
-.hero p{
-    opacity:.92;
-    margin-bottom:20px;
+.hero p {
+    opacity: .92;
+    margin-bottom: 20px;
 }
 
-/* Botones */
-
-button{
-
-    cursor:pointer;
-    border:none;
-
-    transition:.2s;
-
-    font-size:15px;
-
+/* ========================================================
+   BOTONES GLOBALES
+   ======================================================== */
+button {
+    cursor: pointer;
+    border: none;
+    transition: .2s;
+    font-size: 15px;
 }
 
-button:hover{
-    transform:translateY(-2px);
+button:hover {
+    transform: translateY(-2px);
 }
 
-.primary{
-
-    background:white;
-    color:var(--brown-dark);
-
-    padding:14px 22px;
-
-    border-radius:15px;
-
-    display:flex;
-    align-items:center;
-    gap:10px;
-
-    font-weight:700;
-
+.primary {
+    background: white;
+    color: var(--brown-dark);
+    padding: 14px 22px;
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
 }
 
-.secondary{
-
-    background:var(--yellow-pale);
-    color:var(--brown-darker);
-
-    padding:12px 20px;
-    border-radius:15px;
-
+.secondary {
+    background: var(--yellow-pale);
+    color: var(--brown-darker);
+    padding: 12px 20px;
+    border-radius: 15px;
 }
 
-.danger{
-
-    background:var(--danger);
-    color:white;
-
-    padding:12px 20px;
-    border-radius:15px;
-
+.danger {
+    background: var(--danger);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 15px;
 }
 
-/* Tarjetas semana */
-
-.week-grid{
-
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-    gap:18px;
-
-}
-
-.day-card{
-
-    background:var(--surface);
-    border-radius:22px;
-    padding:18px;
-
-    box-shadow:var(--shadow);
-
-    display:flex;
-    flex-direction:column;
-    gap:12px;
-
-    cursor:pointer;
-    user-select:none;
-
-    border:2px solid transparent;
-    transition:transform .15s, box-shadow .15s, border-color .15s, opacity .15s;
-
-}
-
-.day-card:hover{
-    transform:translateY(-2px);
-    box-shadow:0 14px 34px rgba(124,83,52,.16);
-}
-
-.day-card:active{
-    cursor:grabbing;
-}
-
-.day-card.dragging{
-    opacity:.4;
-}
-
-.day-card.drag-over{
-    border-color:var(--yellow);
-    background:var(--yellow-pale);
-}
-
-.day-hint{
-    display:flex;
-    align-items:center;
-    gap:4px;
-    color:var(--muted);
-    font-size:12px;
-    margin-top:2px;
-}
-
-.day-hint .material-symbols-rounded{
-    font-size:16px;
-}
-
-.day-header{
-
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-
-}
-
-.day-header h3{
-    color:var(--brown-dark);
-}
-
-.food{
-
-    font-size:18px;
-    font-weight:600;
-}
-
-.food small{
-
-    display:block;
-    color:var(--muted);
-    margin-top:6px;
-
-}
-
-/* Dropdown compartir */
 .icon-button {
-
-    width:44px;
-    height:44px;
-
-    border:none;
-    border-radius:50%;
-
-    background:var(--yellow-pale);
-    color:var(--brown-dark);
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    cursor:pointer;
-
-    order:2;
-
+    width: 44px;
+    height: 44px;
+    border: none;
+    border-radius: 50%;
+    background: var(--yellow-pale);
+    color: var(--brown-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    order: 2;
 }
 
 .icon-button:hover {
     scale: 110%;
-    transform:translateY(-5px);
-    color:var(--brown-darker);
-    background:#e7d2a6;
-    transition:all 500ms;
+    transform: translateY(-5px);
+    color: var(--brown-darker);
+    background: #e7d2a6;
+    transition: all 500ms;
 }
 
+/* ========================================================
+   DROPDOWN COMPARTIR
+   ======================================================== */
 .dropdown {
     position: absolute;
     top: 65px;
@@ -358,557 +208,157 @@ button:hover{
     border-radius: 18px;
     box-shadow: var(--shadow);
     overflow: hidden;
-
-    /* Estado visible por defecto */
     opacity: 1;
     transform: translateY(0);
     pointer-events: auto;
     transition: opacity 500ms ease, transform 500ms ease;
 }
 
-/* Estado oculto cuando tiene la clase .hidden */
 .dropdown.hidden {
-    display: block !important; /* Anula el display: none si lo tenías definido de forma global */
+    display: block !important;
     opacity: 0;
     transform: translateY(-8px);
-    pointer-events: none; /* Evita que se pueda hacer clic mientras está invisible */
+    pointer-events: none;
 }
 
-.dropdown button{
-
-    width:100%;
-
-    display:flex;
-    align-items:center;
-    gap:12px;
-
-    padding:14px;
-
-    background:none;
-    color:var(--text);
-
-}
-
-.dropdown button:hover{
-    background:var(--yellow-light);
-}
-
-/* Modal */
-
-.modal{
-
-    position:fixed;
-    inset:0;
-
-    background:rgba(74,53,38,.45);
-
-    display:flex;
-    justify-content:center;
-    align-items:center;
-
-    padding:20px;
-
-}
-
-.modal-content{
-
-    background:var(--surface);
-
-    width:100%;
-    max-width:360px;
-
-    padding:28px;
-    border-radius:24px;
-
-    text-align:center;
-
-    box-shadow:var(--shadow);
-
-}
-
-.modal-icon{
-
-    color:var(--yellow);
-    font-size:48px;
-    margin-bottom:10px;
-
-}
-
-.modal-buttons{
-
-    display:flex;
-    gap:12px;
-    margin-top:24px;
-
-}
-
-.modal-buttons button{
-    flex:1;
-}
-
-/* Modal grande: elegir receta para un día */
-
-.modal-content.big{
-
-    max-width:480px;
-    width:92%;
-    max-height:82vh;
-
-    text-align:left;
-    padding:24px;
-
-    display:flex;
-    flex-direction:column;
-
-}
-
-.modal-header{
-
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    margin-bottom:18px;
-
-}
-
-.modal-header h2{
-    font-size:20px;
-}
-
-.search-input{
-
-    width:100%;
-    padding:14px 16px;
-    border-radius:14px;
-    border:1px solid #E2D2BC;
-    font-size:15px;
-    margin-bottom:16px;
-    background:var(--surface);
-    color:var(--text);
-
-}
-
-.choose-recipe-list{
-
-    overflow-y:auto;
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-
-    flex:1;
-
-}
-
-.choose-recipe-item{
-
-    width:100%;
-
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-
-    background:var(--yellow-pale);
-    border-radius:14px;
-    padding:14px 16px;
-
-    text-align:left;
-
-    color:var(--text);
-
-}
-
-.choose-recipe-item:hover{
-    background:var(--yellow-light);
-    transform:none;
-}
-
-.choose-recipe-name{
-    font-weight:600;
-}
-
-.choose-recipe-count{
-    color:var(--muted);
-    font-size:13px;
-    white-space:nowrap;
-    margin-left:10px;
-}
-
-.choose-recipe-empty{
-    color:var(--muted);
-    text-align:center;
-    padding:20px 0;
-}
-
-/* Utilidades */
-
-.hidden{
-    display:none;
-}
-
-/* Tablet y superior: header en una sola fila */
-
-@media (min-width:768px){
-
-    .topbar{
-        flex-wrap:nowrap;
-    }
-
-    .top-nav{
-        order:0;
-        flex-basis:auto;
-        flex:1;
-        justify-content:center;
-        gap:10px;
-    }
-
-    .icon-button{
-        order:0;
-    }
-
-    .nav-link{
-        flex-direction:row;
-        padding:10px 18px;
-    }
-
-}
-
-
-/* ========= HERO COLORES ========= */
-
-.shoppingHero{
-    background:linear-gradient(135deg,var(--yellow),#F7D98A);
-}
-
-.recipeHero{
-    background:linear-gradient(135deg,var(--brown),#C79A6C);
-}
-
-/* ========= LISTA COMPRA ========= */
-
-.shopping-list{
-    display:flex;
-    flex-direction:column;
-    gap:14px;
-}
-
-.shopping-item{
-    display:flex;
-    align-items:center;
-    gap:16px;
-    background:var(--surface);
-    padding:16px;
-    border-radius:18px;
-    box-shadow:var(--shadow);
-}
-
-.shopping-item input[type=checkbox]{
-    width:24px;
-    height:24px;
-    accent-color:var(--brown);
-}
-
-.shopping-info{
-    display:flex;
-    flex-direction:column;
-}
-
-.shopping-info span{
-    color:var(--muted);
-    font-size:14px;
-}
-
-/* ========= FORMULARIO RECETAS ========= */
-
-.recipe-form {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-}
-
-.recipe-form label {
-    font-weight: 600;
-    color: var(--brown-darker);
-}
-
-.recipe-form input {
-    padding: 14px;
-    border-radius: 14px;
-    border: 1px solid #E2D2BC;
-    font-size: 15px;
-    background: var(--surface);
-    color: var(--text);
-}
-
-.ingredients-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 20px;
-}
-
-.primary.small {
-    padding: 10px 14px;
-    font-size: 14px;
-}
-
-/* Ingrediente */
-
-.ingredient-row {
-    display: grid;
-    grid-template-columns: 2fr 1fr 1fr 42px;
-    gap: 8px;
-    margin-bottom: 10px;
-    align-items: center;
-}
-
-.ingredient-row input,
-.ingredient-row select {
+.dropdown button {
     width: 100%;
-    min-width: 0;
-    padding: 12px;
-    border-radius: 14px;
-    border: 1.5px solid var(--brown);
-    font-size: 15px;
-    background: var(--surface);
-    color: var(--text);
-    font-family: inherit;
-    box-sizing: border-box;
-    transition: background-color .2s ease, border-color .2s ease, color .2s ease;
-}
-
-/* Fila fantasma */
-.ingredient-row.ghost input,
-.ingredient-row.ghost select {
-    background: rgba(124, 109, 94, .08);
-    border-color: #9A8D7D;
-    color: var(--muted);
-}
-
-.ingredient-row.ghost input::placeholder {
-    color: var(--muted);
-}
-
-.ingredient-row.ghost .deleteIngredient {
-    opacity: .4;
-}
-
-.ingredient-unit.invalid {
-    border-color: var(--danger);
-    box-shadow: 0 0 0 2px rgba(224, 102, 92, .18);
-}
-
-.deleteIngredient {
-    background: #F7DEDA;
-    color: #B9463C;
-    border: none;
-    border-radius: 12px;
-    height: 44px;
     display: flex;
     align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 15px;
+    gap: 12px;
+    padding: 14px;
+    background: none;
+    color: var(--text);
 }
 
-/* Guardar */
-
-.submitButton {
-    justify-content: center;
-    margin-top: 10px;
-}
-
-/* Separador */
-
-.separator {
-    margin: 35px 0;
-    border: none;
-    border-top: 1px solid #E9DCC7;
-}
-
-.sectionTitle {
-    margin-bottom: 20px;
-}
-
-/* ========= TARJETAS RECETAS ========= */
-
-.recipe-grid{
-    display:flex;
-    flex-direction:column;
-    gap:18px;
-}
-
-.recipe-card{
-    background:var(--surface);
-    border-radius:20px;
-    box-shadow:var(--shadow);
-    position:relative;
-    padding:18px;
-
-    cursor:pointer;
-    transition:box-shadow .15s;
-}
-
-.recipe-card:hover{
-    box-shadow:0 14px 34px rgba(124,83,52,.16);
-}
-
-.recipe-card-header{
-    display:flex;
-    align-items:center;
-    gap:14px;
-    padding-right:44px;
-}
-
-.recipe-icon{
-    font-size:32px;
-    flex-shrink:0;
-}
-
-.recipe-card-header h3{
-    margin-bottom:2px;
-    color:var(--brown-darker);
-}
-
-.recipe-card-header small{
-    color:var(--muted);
-}
-
-.ingredients-panel{
-    display:none;
-    padding-left:18px;
-    color:#5B4633;
-    line-height:1.6;
-    margin-top:14px;
-    border-top:1px solid #E9DCC7;
-    padding-top:14px;
-}
-
-.recipe-card.expanded .ingredients-panel{
-    display:block;
-}
-
-.recipe-card.expanded .recipe-card-header small::after{
-    content:" (toca para cerrar)";
-}
-
-.deleteRecipe{
-    position:absolute;
-    top:14px;
-    right:14px;
-    background:#F7DEDA;
-    width:36px;
-    height:36px;
-    border-radius:50%;
-    color:#B9463C;
+.dropdown button:hover {
+    background: var(--yellow-light);
 }
 
 /* ========================================================
-   TRANSICIONES ESTILO "DIAPOSITIVAS" ENTRE PÁGINAS
-   (View Transitions API — Chrome/Edge recientes;
-   en otros navegadores simplemente navega sin animación)
+   MODALES BASE
    ======================================================== */
-
-@view-transition{
-    navigation:auto;
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(74, 53, 38, .45);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
 }
 
-/* El header (con el indicador de navegación) se mantiene fijo:
-   no participa del deslizamiento del contenido, solo la píldora
-   activa se desliza suavemente de un enlace a otro. */
+.modal-content {
+    background: var(--surface);
+    width: 100%;
+    max-width: 360px;
+    padding: 28px;
+    border-radius: 24px;
+    text-align: center;
+    box-shadow: var(--shadow);
+}
 
-header.topbar{
-    view-transition-name:siteHeader;
+.modal-icon {
+    color: var(--yellow);
+    font-size: 48px;
+    margin-bottom: 10px;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.modal-buttons button {
+    flex: 1;
+}
+
+.hidden {
+    display: none;
+}
+
+/* ========================================================
+   TRANSICIONES ENTRE PÁGINAS (VIEW TRANSITIONS API)
+   ======================================================== */
+@view-transition {
+    navigation: auto;
+}
+
+header.topbar {
+    view-transition-name: siteHeader;
 }
 
 ::view-transition-old(siteHeader),
-::view-transition-new(siteHeader){
-    animation:none;
-    mix-blend-mode:normal;
+::view-transition-new(siteHeader) {
+    animation: none;
+    mix-blend-mode: normal;
 }
 
-/* El resto de la página (el contenido) entra y sale en horizontal,
-   como diapositivas deslizándose. */
-
-/* Fijamos el grupo "root" al tamaño de la ventana en vez de dejar
-   que el navegador lo estire/encoja entre el alto de la página
-   antigua y la nueva: eso era lo que provocaba el efecto de
-   "rayado"/deformación al cambiar de página (por ejemplo si el
-   menú no cargaba por un fallo de Redis y la página quedaba mucho
-   más corta). */
-
-::view-transition-group(root){
-    animation-duration:.32s;
-    animation-timing-function:cubic-bezier(.4,0,.2,1);
-    width:100vw;
-    height:100vh;
+::view-transition-group(root) {
+    animation-duration: .32s;
+    animation-timing-function: cubic-bezier(.4, 0, .2, 1);
+    width: 100vw;
+    height: 100vh;
 }
 
-::view-transition-image-pair(root){
-    isolation:isolate;
+::view-transition-image-pair(root) {
+    isolation: isolate;
 }
 
-::view-transition-old(root){
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    object-position:top;
-    animation-name:slideOutContent;
-    animation-duration:.32s;
-    animation-timing-function:cubic-bezier(.4,0,.2,1);
-    animation-fill-mode:both;
+::view-transition-old(root) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top;
+    animation-name: slideOutContent;
+    animation-duration: .32s;
+    animation-timing-function: cubic-bezier(.4, 0, .2, 1);
+    animation-fill-mode: both;
 }
 
-::view-transition-new(root){
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    object-position:top;
-    animation-name:slideInContent;
-    animation-duration:.32s;
-    animation-timing-function:cubic-bezier(.4,0,.2,1);
-    animation-fill-mode:both;
+::view-transition-new(root) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top;
+    animation-name: slideInContent;
+    animation-duration: .32s;
+    animation-timing-function: cubic-bezier(.4, 0, .2, 1);
+    animation-fill-mode: both;
 }
 
-@keyframes slideOutContent{
-    to{
-        transform:translateX(-24px);
-        opacity:0;
+@keyframes slideOutContent {
+    to {
+        transform: translateX(-24px);
+        opacity: 0;
     }
 }
 
-@keyframes slideInContent{
-    from{
-        transform:translateX(24px);
-        opacity:0;
+@keyframes slideInContent {
+    from {
+        transform: translateX(24px);
+        opacity: 0;
     }
 }
 
-/* ========= RESPONSIVE ========= */
-
-@media (max-width: 600px) {
-    .ingredient-row {
-        grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 1.1fr) 36px;
-        gap: 5px;
+/* Responsive cabecera */
+@media (min-width: 768px) {
+    .topbar {
+        flex-wrap: nowrap;
     }
-
-    .ingredient-row input,
-    .ingredient-row select {
-        padding: 9px 6px;
-        font-size: 13px;
-        border-radius: 10px;
+    .top-nav {
+        order: 0;
+        flex-basis: auto;
+        flex: 1;
+        justify-content: center;
+        gap: 10px;
     }
-
-    .deleteIngredient {
-        height: 38px;
-        border-radius: 10px;
-        padding: 0;
+    .icon-button {
+        order: 0;
     }
-}
-
-@media (min-width: 900px) {
-    .recipe-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 20px;
+    .nav-link {
+        flex-direction: row;
+        padding: 10px 18px;
     }
 }

@@ -1,0 +1,35 @@
+.shoppingHero {
+    background: linear-gradient(135deg, var(--yellow), #F7D98A);
+}
+
+.shopping-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.shopping-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface);
+    padding: 16px;
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+}
+
+.shopping-item input[type=checkbox] {
+    width: 24px;
+    height: 24px;
+    accent-color: var(--brown);
+}
+
+.shopping-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.shopping-info span {
+    color: var(--muted);
+    font-size: 14px;
+}

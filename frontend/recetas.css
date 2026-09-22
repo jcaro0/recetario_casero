@@ -1,0 +1,81 @@
+.recipeHero {
+    background: linear-gradient(135deg, var(--brown), #C79A6C);
+}
+
+.recipe-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.recipe-card {
+    background: var(--surface);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    position: relative;
+    padding: 18px;
+    cursor: pointer;
+    transition: box-shadow .15s;
+}
+
+.recipe-card:hover {
+    box-shadow: 0 14px 34px rgba(124, 83, 52, .16);
+}
+
+.recipe-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-right: 44px;
+}
+
+.recipe-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+}
+
+.recipe-card-header h3 {
+    margin-bottom: 2px;
+    color: var(--brown-darker);
+}
+
+.recipe-card-header small {
+    color: var(--muted);
+}
+
+.ingredients-panel {
+    display: none;
+    padding-left: 18px;
+    color: #5B4633;
+    line-height: 1.6;
+    margin-top: 14px;
+    border-top: 1px solid #E9DCC7;
+    padding-top: 14px;
+}
+
+.recipe-card.expanded .ingredients-panel {
+    display: block;
+}
+
+.recipe-card.expanded .recipe-card-header small::after {
+    content: " (toca para cerrar)";
+}
+
+.deleteRecipe {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    background: #F7DEDA;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: #B9463C;
+}
+
+@media (min-width: 900px) {
+    .recipe-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+}

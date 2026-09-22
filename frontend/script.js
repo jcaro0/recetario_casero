@@ -53,7 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const page = window.location.pathname.split("/").pop();
 
-    if(page === "index.html" || page === ""){
+    if(page === "menu.html" || page === ""){
         loadWeeklyMenu();
         setupModal();
         setupChooseRecipeModal();

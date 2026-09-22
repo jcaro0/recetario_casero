@@ -17,11 +17,7 @@ def get_redis() -> redis.Redis:
     """Devuelve un cliente Redis reutilizable (conexión perezosa)."""
     global _client
     if _client is None:
-        _client = redis.Redis(
-                host=REDIS_HOST,
-                port=REDIS_PORT,
-                decode_responses=True,
-            )
+        _client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
     return _client
 
 

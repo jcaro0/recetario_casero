@@ -1,0 +1,147 @@
+/* Tarjetas semana */
+.week-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+}
+
+.day-card {
+    background: var(--surface);
+    border-radius: 22px;
+    padding: 18px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+    border: 2px solid transparent;
+    transition: transform .15s, box-shadow .15s, border-color .15s, opacity .15s;
+}
+
+.day-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 34px rgba(124, 83, 52, .16);
+}
+
+.day-card:active {
+    cursor: grabbing;
+}
+
+.day-card.dragging {
+    opacity: .4;
+}
+
+.day-card.drag-over {
+    border-color: var(--yellow);
+    background: var(--yellow-pale);
+}
+
+.day-hint {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 2px;
+}
+
+.day-hint .material-symbols-rounded {
+    font-size: 16px;
+}
+
+.day-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.day-header h3 {
+    color: var(--brown-dark);
+}
+
+.food {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.food small {
+    display: block;
+    color: var(--muted);
+    margin-top: 6px;
+}
+
+/* Modal grande: elegir receta para un día */
+.modal-content.big {
+    max-width: 480px;
+    width: 92%;
+    max-height: 82vh;
+    text-align: left;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+}
+
+.modal-header h2 {
+    font-size: 20px;
+}
+
+.search-input {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid #E2D2BC;
+    font-size: 15px;
+    margin-bottom: 16px;
+    background: var(--surface);
+    color: var(--text);
+}
+
+.choose-recipe-list {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+}
+
+.choose-recipe-item {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--yellow-pale);
+    border-radius: 14px;
+    padding: 14px 16px;
+    text-align: left;
+    color: var(--text);
+}
+
+.choose-recipe-item:hover {
+    background: var(--yellow-light);
+    transform: none;
+}
+
+.choose-recipe-name {
+    font-weight: 600;
+}
+
+.choose-recipe-count {
+    color: var(--muted);
+    font-size: 13px;
+    white-space: nowrap;
+    margin-left: 10px;
+}
+
+.choose-recipe-empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 20px 0;
+}

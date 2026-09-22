@@ -21,12 +21,12 @@ app = Flask(__name__, static_folder=FRONTEND_FOLDER, static_url_path="")
 
 @app.route("/")
 def serve_index():
-    return app.send_static_file("index.html")
+    return app.send_static_file("menu.html")
 
 
 @app.route("/<path:filename>")
 def serve_frontend_file(filename):
-    # Sirve index.html, style.css, script.js, lista_compra.html, etc.
+    # Sirve menu.html, style.css, script.js, lista_compra.html, etc.
     return app.send_static_file(filename)
 
 
