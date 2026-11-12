@@ -279,6 +279,132 @@ button:hover {
 }
 
 /* ========================================================
+   ETIQUETA DE TIPO DE RECETA (ambos / comida / cena / extra)
+   ======================================================== */
+.type-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.6;
+    vertical-align: middle;
+    color: var(--brown-dark);
+    background: var(--yellow-pale);
+}
+
+.type-badge.type-comida {
+    background: var(--yellow-light);
+    color: var(--brown-darker);
+}
+
+.type-badge.type-cena {
+    background: rgba(169, 117, 79, .2);
+    color: var(--brown-darker);
+}
+
+.type-badge.type-extra {
+    background: #EFE6D6;
+    color: var(--muted);
+}
+
+/* ========================================================
+   BARRA DE OPCIONES (el fondo marcado se desliza a la elegida)
+   Estructura: .segmented > .segmented-indicator + (input radio + label.segmented-option) x N
+   Para otro número de opciones basta con cambiar --segments.
+   ======================================================== */
+.segmented {
+    --segments: 4;
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(var(--segments), 1fr);
+    padding: 4px;
+    background: var(--yellow-pale);
+    border-radius: 18px;
+}
+
+.segmented-indicator {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    width: calc((100% - 8px) / var(--segments));
+    background: var(--yellow-light);
+    border-radius: 14px;
+    box-shadow: 0 4px 12px rgba(124, 83, 52, .14);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+}
+
+.segmented:has(input:nth-of-type(2):checked) .segmented-indicator {
+    transform: translateX(100%);
+}
+
+.segmented:has(input:nth-of-type(3):checked) .segmented-indicator {
+    transform: translateX(200%);
+}
+
+.segmented:has(input:nth-of-type(4):checked) .segmented-indicator {
+    transform: translateX(300%);
+}
+
+/* Los radios van ocultos; se manejan con sus label */
+.segmented input[type="radio"] {
+    position: absolute;
+    width: 0;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.segmented .segmented-option {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 10px 4px;
+    border-radius: 14px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+    transition: color .2s;
+}
+
+.segmented .segmented-option .material-symbols-rounded {
+    font-size: 22px;
+}
+
+.segmented input:not(:checked) + .segmented-option:hover {
+    color: var(--brown-dark);
+}
+
+.segmented input:checked + .segmented-option {
+    color: var(--brown-darker);
+}
+
+.segmented input:focus-visible + .segmented-option {
+    outline: 2px solid var(--brown);
+    outline-offset: -2px;
+}
+
+@media (min-width: 600px) {
+    .segmented .segmented-option {
+        flex-direction: row;
+        gap: 8px;
+        padding: 12px 8px;
+        font-size: 14px;
+    }
+}
+
+/* ========================================================
    TRANSICIONES ENTRE PÁGINAS (VIEW TRANSITIONS API)
    ======================================================== */
 @view-transition {

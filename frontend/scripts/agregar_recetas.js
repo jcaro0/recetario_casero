@@ -103,7 +103,7 @@ async function saveRecipe(e) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 name: document.getElementById("recipeName").value,
-                type: document.getElementById("recipeType").value,
+                type: (document.querySelector('input[name="recipeType"]:checked') || {}).value || "ambos",
                 ingredients
             })
         });

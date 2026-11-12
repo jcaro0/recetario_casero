@@ -12,7 +12,6 @@
 
     <link rel="stylesheet" href="style/style.css">
     <link rel="stylesheet" href="style/agregar_recetas.css">
-    <link rel="stylesheet" href="style/tipos.css">
 
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded" rel="stylesheet">
 
@@ -71,14 +70,37 @@
         required
         placeholder="Ej. Lasaña de carne">
 
-    <label for="recipeType">Tipo de receta</label>
+    <label id="recipeTypeLabel">Tipo de receta</label>
 
-    <select id="recipeType" class="recipe-type-select">
-        <option value="ambos" selected>Ambos (comida y cena)</option>
-        <option value="comida">Comida</option>
-        <option value="cena">Cena</option>
-        <option value="extra">Extra (no entra en el menú automático)</option>
-    </select>
+    <div class="segmented" role="radiogroup" aria-labelledby="recipeTypeLabel">
+
+        <span class="segmented-indicator"></span>
+
+        <input type="radio" name="recipeType" id="type-ambos" value="ambos" checked>
+        <label for="type-ambos" class="segmented-option">
+            <span class="material-symbols-rounded">all_inclusive</span>
+            Ambos
+        </label>
+
+        <input type="radio" name="recipeType" id="type-comida" value="comida">
+        <label for="type-comida" class="segmented-option">
+            <span class="material-symbols-rounded">restaurant</span>
+            Comida
+        </label>
+
+        <input type="radio" name="recipeType" id="type-cena" value="cena">
+        <label for="type-cena" class="segmented-option">
+            <span class="material-symbols-rounded">bedtime</span>
+            Cena
+        </label>
+
+        <input type="radio" name="recipeType" id="type-extra" value="extra">
+        <label for="type-extra" class="segmented-option">
+            <span class="material-symbols-rounded">cookie</span>
+            Extra
+        </label>
+
+    </div>
 
     <div class="ingredients-header">
 
