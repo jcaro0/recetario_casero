@@ -405,6 +405,31 @@ button:hover {
 }
 
 /* ========================================================
+   ESTADO VACÍO (imagen + mensaje centrado debajo)
+   ======================================================== */
+.empty-state {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.empty-state img {
+    width: 100%;
+    max-width: 280px;
+    height: auto;
+}
+
+.empty-state p {
+    color: var(--brown-dark);
+    font-size: 18px;
+    font-weight: 600;
+}
+
+/* ========================================================
    TRANSICIONES ENTRE PÁGINAS (VIEW TRANSITIONS API)
    ======================================================== */
 @view-transition {

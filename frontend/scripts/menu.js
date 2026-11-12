@@ -13,6 +13,10 @@ const MEALS = [
     { key: "cena", label: "Cena", icon: "🌙" }
 ];
 
+// Tu imagen para el menú vacío: guárdala en frontend/img/ con este nombre
+// (si usas otra extensión, cambia solo esta línea).
+const EMPTY_MENU_IMAGE = "img/sin_recetas.png";
+
 let currentEditSlot = null; // { day, meal }
 let allRecipesCache = [];
 
@@ -63,12 +67,36 @@ function slotHtml(dayKey, meal, recipe) {
     `;
 }
 
+// Estado vacío: todavía no hay recetas con las que montar un menú.
+// Es distinto de un fallo al cargar (ese se avisa en el catch de loadWeeklyMenu).
+function showNotEnoughRecipes(grid) {
+    grid.innerHTML = `
+        <div class="empty-state">
+            <img src="${EMPTY_MENU_IMAGE}" alt=""
+                 onerror="this.style.display='none'">
+            <p>No hay suficientes recetas</p>
+        </div>
+    `;
+}
+
 async function loadWeeklyMenu() {
     const grid = document.getElementById("weekGrid");
     if (!grid) return;
     grid.innerHTML = "<p>Cargando menú...</p>";
     try {
-        const menu = await api("/menu");
+        const [menu, recipes] = await Promise.all([api("/menu"), api("/recipes")]);
+
+        // Las recetas "extra" no entran en el menú automático, así que no cuentan
+        const usable = recipes.filter(r => r.type !== "extra");
+        const generateButton = document.getElementById("generateButton");
+
+        if (usable.length === 0) {
+            if (generateButton) generateButton.style.display = "none";
+            showNotEnoughRecipes(grid);
+            return;
+        }
+        if (generateButton) generateButton.style.display = "";
+
         grid.innerHTML = DAYS.map(day => {
             const dayKey = day.toLowerCase();
             const meals = menu[dayKey] || {};
