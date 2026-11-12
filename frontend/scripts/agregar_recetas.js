@@ -97,14 +97,21 @@ async function saveRecipe(e) {
         });
     });
 
-    await fetch("/recipes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            name: document.getElementById("recipeName").value,
-            ingredients
-        })
-    });
+    try {
+        await api("/recipes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: document.getElementById("recipeName").value,
+                type: document.getElementById("recipeType").value,
+                ingredients
+            })
+        });
+    } catch (err) {
+        // No se resetea el formulario para no perder lo escrito
+        alert("No se pudo guardar la receta: " + err.message);
+        return;
+    }
 
     document.getElementById("recipeForm").reset();
     const ingredientList = document.getElementById("ingredientList");

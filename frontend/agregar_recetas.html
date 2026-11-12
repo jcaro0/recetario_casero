@@ -12,6 +12,7 @@
 
     <link rel="stylesheet" href="style/style.css">
     <link rel="stylesheet" href="style/agregar_recetas.css">
+    <link rel="stylesheet" href="style/tipos.css">
 
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded" rel="stylesheet">
 
@@ -57,18 +58,27 @@
 
     <h1>Nueva receta</h1>
 
-    <p>Añádela con su nombre e ingredientes.</p>
+    <p>Añádela con su nombre, tipo e ingredientes.</p>
 
 </section>
 
 <form id="recipeForm" class="recipe-form">
 
-    <label>Nombre de la receta</label>
+    <label for="recipeName">Nombre de la receta</label>
 
     <input
         id="recipeName"
         required
         placeholder="Ej. Lasaña de carne">
+
+    <label for="recipeType">Tipo de receta</label>
+
+    <select id="recipeType" class="recipe-type-select">
+        <option value="ambos" selected>Ambos (comida y cena)</option>
+        <option value="comida">Comida</option>
+        <option value="cena">Cena</option>
+        <option value="extra">Extra (no entra en el menú automático)</option>
+    </select>
 
     <div class="ingredients-header">
 

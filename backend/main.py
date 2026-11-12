@@ -1,3 +1,4 @@
+import math
 import os
 import random
 
@@ -5,6 +6,7 @@ from flask import Flask, request, jsonify
 
 import set_up
 import database as db
+from normalize import collapse_spaces
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -15,7 +17,7 @@ FRONTEND_FOLDER = os.environ.get(
 
 app = Flask(__name__, static_folder=FRONTEND_FOLDER, static_url_path="")
 
-# Crea las tablas si no existen (idempotente).
+# Crea las tablas si no existen (o actualiza una base de la versión anterior).
 set_up.create_tables()
 
 
@@ -35,25 +37,57 @@ def serve_frontend_file(filename):
 
 
 # ---------------------------------------------------------
-# MENÚ SEMANAL
+# MENÚ SEMANAL (comida y cena de cada día)
 # ---------------------------------------------------------
+
+def _slot_json(recipe):
+    if recipe:
+        return {
+            "id": recipe["id"],
+            "name": recipe["name"],
+            "type": recipe["type"],
+            "ingredients": recipe["ingredients"],
+        }
+    return {"name": None, "ingredients": []}
+
 
 @app.route("/menu", methods=["GET"])
 def api_get_menu():
+    """{dia: {"comida": {...}, "cena": {...}}}"""
     menu = db.get_menu()
+    return jsonify({
+        day: {meal: _slot_json(recipe) for meal, recipe in meals.items()}
+        for day, meals in menu.items()
+    })
 
-    result = {}
-    for day, recipe in menu.items():
-        if recipe:
-            result[day] = {
-                "id": recipe["id"],
-                "name": recipe["name"],
-                "ingredients": recipe["ingredients"],
-            }
-        else:
-            result[day] = {"name": None, "ingredients": []}
 
-    return jsonify(result)
+def build_random_menu(recipes):
+    """
+    Elige receta para cada comida y cena:
+      - comidas: recetas 'comida' o 'ambos'; cenas: 'cena' o 'ambos'
+      - las 'extra' nunca entran en el menú automático
+      - no se repite ninguna mientras queden recetas sin usar
+    """
+    pools = {
+        meal: [r for r in recipes if r["type"] in ("ambos", meal)]
+        for meal in db.MEALS
+    }
+
+    assignments = {}
+    used = set()
+
+    # Primero el tipo de comida con menos recetas posibles
+    for meal in sorted(db.MEALS, key=lambda m: len(pools[m])):
+        pool = pools[meal]
+        if not pool:
+            continue
+        for day in db.DAYS:
+            unused = [r for r in pool if r["id"] not in used]
+            recipe = random.choice(unused or pool)
+            used.add(recipe["id"])
+            assignments[(day, meal)] = recipe["id"]
+
+    return assignments
 
 
 @app.route("/menu/generate", methods=["POST"])
@@ -64,45 +98,56 @@ def api_generate_menu():
         db.clear_menu()
         return jsonify({"ok": True, "message": "No hay recetas guardadas."})
 
-    if len(recipes) >= len(db.DAYS):
-        chosen = random.sample(recipes, len(db.DAYS))
-    else:
-        # No hay recetas suficientes para no repetir: se rellena al azar
-        chosen = [random.choice(recipes) for _ in db.DAYS]
+    assignments = build_random_menu(recipes)
+    db.replace_menu(assignments)
 
-    db.replace_menu({day: recipe["id"] for day, recipe in zip(db.DAYS, chosen)})
+    if not assignments:
+        return jsonify({"ok": True, "message": "No hay recetas de comida ni de cena."})
 
     return jsonify({"ok": True})
 
 
 @app.route("/menu/swap", methods=["POST"])
-def api_swap_menu_days():
-    """Intercambia la receta de dos días (arrastrar una tarjeta sobre otra)."""
+def api_swap_menu_slots():
+    """Intercambia dos huecos del menú (arrastrar uno sobre otro)."""
     data = request.get_json(silent=True) or {}
 
-    day1 = data.get("day1")
-    day2 = data.get("day2")
+    day1, meal1 = data.get("day1"), data.get("meal1")
+    day2, meal2 = data.get("day2"), data.get("meal2")
 
     if day1 not in db.DAYS or day2 not in db.DAYS:
         return jsonify({"error": "Día no válido"}), 400
+    if meal1 not in db.MEALS or meal2 not in db.MEALS:
+        return jsonify({"error": "Comida no válida"}), 400
 
-    db.swap_menu_days(day1, day2)
+    try:
+        db.swap_menu_slots(day1, meal1, day2, meal2)
+    except db.IncompatibleMeal as e:
+        return jsonify({"error": str(e)}), 400
 
     return jsonify({"ok": True})
 
 
-@app.route("/menu/<day>", methods=["POST"])
-def api_set_menu_day(day):
-    """Asigna una receta concreta a un día (elegida desde el modal)."""
+@app.route("/menu/<day>/<meal>", methods=["POST"])
+def api_set_menu_slot(day, meal):
+    """Asigna una receta concreta a la comida o cena de un día (desde el modal)."""
     if day not in db.DAYS:
         return jsonify({"error": "Día no válido"}), 400
+    if meal not in db.MEALS:
+        return jsonify({"error": "Comida no válida"}), 400
 
     data = request.get_json(silent=True) or {}
     recipe = db.get_recipe(data.get("recipe_id"))
     if not recipe:
         return jsonify({"error": "Receta no encontrada"}), 404
 
-    db.set_menu_day(day, recipe["id"])
+    if not db.fits_meal(recipe["type"], meal):
+        return jsonify({
+            "error": f"'{recipe['name']}' es una receta de {recipe['type']}, "
+                     f"no se puede poner en la {meal}."
+        }), 400
+
+    db.set_menu_slot(day, meal, recipe["id"])
 
     return jsonify({"ok": True})
 
@@ -117,11 +162,12 @@ def api_shopping_list():
 
 
 # ---------------------------------------------------------
-# RECETAS (sin fotos: solo nombre e ingredientes)
+# RECETAS (sin fotos: nombre, tipo e ingredientes)
 # ---------------------------------------------------------
 
 def clean_ingredients(raw):
-    """Valida y normaliza la lista de ingredientes que llega del frontend."""
+    """Valida la lista de ingredientes que llega del frontend (la normalización
+    de nombres y unidades se hace después, en database.create_recipe)."""
     if not isinstance(raw, list):
         return []
 
@@ -130,21 +176,23 @@ def clean_ingredients(raw):
         if not isinstance(ing, dict):
             continue
 
-        name = str(ing.get("name") or "").strip()
+        name = collapse_spaces(ing.get("name"))
         if not name:
             continue
 
         qty = ing.get("qty")
-        try:
-            qty = float(qty) if qty is not None else None
-        except (TypeError, ValueError):
+        if qty in (None, ""):
             qty = None
+        else:
+            try:
+                qty = float(qty)
+            except (TypeError, ValueError):
+                qty = None
+            else:
+                if not math.isfinite(qty) or qty < 0:
+                    qty = None
 
-        unit = str(ing.get("unit") or "").strip() or None
-        if qty is None:
-            unit = None
-
-        cleaned.append({"name": name, "qty": qty, "unit": unit})
+        cleaned.append({"name": name, "qty": qty, "unit": ing.get("unit")})
 
     return cleaned
 
@@ -158,11 +206,17 @@ def api_list_recipes():
 def api_create_recipe():
     data = request.get_json(silent=True) or {}
 
-    name = str(data.get("name") or "").strip()
+    name = collapse_spaces(data.get("name"))
     if not name:
         return jsonify({"error": "El nombre es obligatorio"}), 400
 
-    recipe = db.create_recipe(name, clean_ingredients(data.get("ingredients")))
+    recipe_type = collapse_spaces(data.get("type") or "ambos").lower()
+    if recipe_type not in db.RECIPE_TYPES:
+        return jsonify({
+            "error": "Tipo no válido (usa: " + ", ".join(db.RECIPE_TYPES) + ")"
+        }), 400
+
+    recipe = db.create_recipe(name, clean_ingredients(data.get("ingredients")), recipe_type)
 
     return jsonify(recipe), 201
 

@@ -8,8 +8,7 @@ async function loadRecipesView() {
     if (!list) return;
     list.innerHTML = "<p>Cargando recetas...</p>";
     try {
-        const res = await fetch("/recipes");
-        const recipes = await res.json();
+        const recipes = await api("/recipes");
         if (recipes.length === 0) {
             list.innerHTML = "<p>Todavía no has guardado ninguna receta.</p>";
             return;
@@ -19,8 +18,9 @@ async function loadRecipesView() {
                 <div class="recipe-card-header">
                     <span class="recipe-icon">🍲</span>
                     <div>
-                        <h3>${recipe.name}</h3>
+                        <h3>${escapeHtml(recipe.name)}</h3>
                         <small>${recipe.ingredients.length} ingredientes</small>
+                        ${typeBadge(recipe.type)}
                     </div>
                 </div>
                 <button
@@ -30,7 +30,7 @@ async function loadRecipesView() {
                 </button>
                 <ul class="ingredients-panel">
                     ${recipe.ingredients.map(i => `
-                        <li>${i.name}${formatQtyUnit(i.qty, i.unit)}</li>
+                        <li>${escapeHtml(i.name)}${escapeHtml(formatQtyUnit(i.qty, i.unit))}</li>
                     `).join("")}
                 </ul>
             </div>
@@ -53,8 +53,10 @@ function setupRecipeExpansion() {
 
 async function deleteRecipe(id) {
     if (!confirm("¿Eliminar receta?")) return;
-    await fetch("/recipes/" + id, {
-        method: "DELETE"
-    });
+    try {
+        await api("/recipes/" + id, { method: "DELETE" });
+    } catch (e) {
+        alert("No se pudo eliminar: " + e.message);
+    }
     loadRecipesView();
 }

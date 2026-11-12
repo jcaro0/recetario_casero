@@ -3,10 +3,17 @@ const DAYS = [
     "Martes",
     "Miércoles",
     "Jueves",
-    "Viernes"
+    "Viernes",
+    "Sábado",
+    "Domingo"
 ];
 
-let currentEditDay = null;
+const MEALS = [
+    { key: "comida", label: "Comida", icon: "🍽️" },
+    { key: "cena", label: "Cena", icon: "🌙" }
+];
+
+let currentEditSlot = null; // { day, meal }
 let allRecipesCache = [];
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -16,49 +23,69 @@ document.addEventListener("DOMContentLoaded", () => {
     setupWeekGridEvents();
 });
 
+function mealLabel(key) {
+    const meal = MEALS.find(m => m.key === key);
+    return meal ? meal.label : key;
+}
+
 // Compartir menú semanal
 async function shareMenu(type) {
-    const res = await fetch("/menu");
-    const menu = await res.json();
-    let text = "🍽️ MENÚ SEMANAL\n\n";
-    DAYS.forEach(day => {
-        const recipe = menu[day.toLowerCase()];
-        text += `${day}: ${recipe?.name || "Sin receta"}\n`;
-    });
-    shareText(text, type);
+    try {
+        const menu = await api("/menu");
+        let text = "🍽️ MENÚ SEMANAL\n\n";
+        DAYS.forEach(day => {
+            text += `${day}\n`;
+            MEALS.forEach(meal => {
+                const recipe = menu[day.toLowerCase()]?.[meal.key];
+                text += `  ${meal.label}: ${recipe?.name || "Sin receta"}\n`;
+            });
+            text += "\n";
+        });
+        shareText(text.trim(), type, "Menú semanal");
+    } catch (e) {
+        alert("No se pudo compartir el menú: " + e.message);
+    }
 }
 
 // Carga del menú semanal
+function slotHtml(dayKey, meal, recipe) {
+    const name = recipe?.name || "Sin receta";
+    const count = recipe?.ingredients?.length || 0;
+    return `
+        <div class="meal-slot" draggable="true"
+             data-day="${dayKey}" data-meal="${meal.key}">
+            <div class="meal-label">${meal.icon} ${meal.label}</div>
+            <div class="food">
+                ${escapeHtml(name)}
+                <small>${count} ingredientes</small>
+            </div>
+        </div>
+    `;
+}
+
 async function loadWeeklyMenu() {
     const grid = document.getElementById("weekGrid");
     if (!grid) return;
     grid.innerHTML = "<p>Cargando menú...</p>";
     try {
-        const res = await fetch("/menu");
-        const menu = await res.json();
-        grid.innerHTML = "";
-        DAYS.forEach(day => {
+        const menu = await api("/menu");
+        grid.innerHTML = DAYS.map(day => {
             const dayKey = day.toLowerCase();
-            const recipe = menu[dayKey] || {};
-            grid.innerHTML += `
-                <div class="day-card" draggable="true" data-day="${dayKey}">
+            const meals = menu[dayKey] || {};
+            return `
+                <div class="day-card" data-day="${dayKey}">
                     <div class="day-header">
                         <h3>${day}</h3>
                         <span>🍽️</span>
                     </div>
-                    <div class="food">
-                        ${recipe.name || "Sin receta"}
-                        <small>
-                            ${recipe.ingredients?.length || 0} ingredientes
-                        </small>
-                    </div>
+                    ${MEALS.map(m => slotHtml(dayKey, m, meals[m.key])).join("")}
                     <div class="day-hint">
                         <span class="material-symbols-rounded">swap_horiz</span>
                         Toca para cambiar • arrastra para mover
                     </div>
                 </div>
             `;
-        });
+        }).join("");
     } catch (e) {
         grid.innerHTML = "<p>No se pudo cargar el menú.</p>";
     }
@@ -75,9 +102,12 @@ function setupModal() {
     cancel.onclick = () => modal.classList.add("hidden");
     confirm.onclick = async () => {
         modal.classList.add("hidden");
-        await fetch("/menu/generate", {
-            method: "POST"
-        });
+        try {
+            const result = await api("/menu/generate", { method: "POST" });
+            if (result && result.message) alert(result.message);
+        } catch (e) {
+            alert("No se pudo regenerar el menú: " + e.message);
+        }
         loadWeeklyMenu();
     };
 }
@@ -99,21 +129,20 @@ function setupChooseRecipeModal() {
     });
 }
 
-async function openChooseRecipeModal(day) {
-    currentEditDay = day;
+async function openChooseRecipeModal(day, meal) {
+    currentEditSlot = { day, meal };
     const modal = document.getElementById("chooseRecipeModal");
     const dayLabel = document.getElementById("chooseRecipeDay");
     const searchInput = document.getElementById("recipeSearchInput");
     const list = document.getElementById("chooseRecipeList");
 
-    dayLabel.textContent = capitalize(day);
+    dayLabel.textContent = `${capitalize(day)} (${mealLabel(meal).toLowerCase()})`;
     searchInput.value = "";
     modal.classList.remove("hidden");
     list.innerHTML = '<p class="choose-recipe-empty">Cargando recetas...</p>';
 
     try {
-        const res = await fetch("/recipes");
-        allRecipesCache = await res.json();
+        allRecipesCache = await api("/recipes");
         renderChooseRecipeList("");
     } catch {
         list.innerHTML = '<p class="choose-recipe-empty">No se pudieron cargar las recetas.</p>';
@@ -124,15 +153,18 @@ async function openChooseRecipeModal(day) {
 
 function closeChooseRecipeModal() {
     document.getElementById("chooseRecipeModal").classList.add("hidden");
-    currentEditDay = null;
+    currentEditSlot = null;
+}
+
+// Una receta 'comida' no entra en una cena (y al revés); 'ambos' y 'extra' valen siempre
+function fitsMeal(recipeType, meal) {
+    return ["ambos", "extra", meal].includes(recipeType);
 }
 
 function renderChooseRecipeList(query) {
     const list = document.getElementById("chooseRecipeList");
     const q = query.trim().toLowerCase();
-    const filtered = allRecipesCache.filter(r =>
-        r.name.toLowerCase().includes(q)
-    );
+    const meal = currentEditSlot?.meal;
 
     if (allRecipesCache.length === 0) {
         list.innerHTML = `
@@ -143,6 +175,19 @@ function renderChooseRecipeList(query) {
         return;
     }
 
+    const compatible = allRecipesCache.filter(r => fitsMeal(r.type, meal));
+
+    if (compatible.length === 0) {
+        list.innerHTML = `
+            <p class="choose-recipe-empty">
+                No tienes recetas válidas para la ${escapeHtml(mealLabel(meal).toLowerCase())}.
+            </p>
+        `;
+        return;
+    }
+
+    const filtered = compatible.filter(r => r.name.toLowerCase().includes(q));
+
     if (filtered.length === 0) {
         list.innerHTML = '<p class="choose-recipe-empty">No hay recetas que coincidan.</p>';
         return;
@@ -150,82 +195,97 @@ function renderChooseRecipeList(query) {
 
     list.innerHTML = filtered.map(r => `
         <button class="choose-recipe-item" data-id="${r.id}">
-            <span class="choose-recipe-name">${r.name}</span>
+            <span class="choose-recipe-name">${escapeHtml(r.name)} ${typeBadge(r.type)}</span>
             <span class="choose-recipe-count">${r.ingredients.length} ingredientes</span>
         </button>
     `).join("");
 
     list.querySelectorAll(".choose-recipe-item").forEach(btn => {
-        btn.onclick = () => selectRecipeForDay(Number(btn.dataset.id));
+        btn.onclick = () => selectRecipeForSlot(Number(btn.dataset.id));
     });
 }
 
-async function selectRecipeForDay(recipeId) {
-    if (!currentEditDay) return;
-    await fetch(`/menu/${encodeURIComponent(currentEditDay)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipe_id: recipeId })
-    });
+async function selectRecipeForSlot(recipeId) {
+    if (!currentEditSlot) return;
+    const { day, meal } = currentEditSlot;
+    try {
+        await api(`/menu/${encodeURIComponent(day)}/${encodeURIComponent(meal)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ recipe_id: recipeId })
+        });
+    } catch (e) {
+        alert(e.message);
+    }
     closeChooseRecipeModal();
     loadWeeklyMenu();
 }
 
-// Drag & drop en tarjetas de días
+// Click y drag & drop sobre cada hueco (comida / cena)
 function setupWeekGridEvents() {
     const grid = document.getElementById("weekGrid");
     if (!grid) return;
 
     grid.addEventListener("click", (e) => {
-        const card = e.target.closest(".day-card");
-        if (!card) return;
-        openChooseRecipeModal(card.dataset.day);
+        const slot = e.target.closest(".meal-slot");
+        if (!slot) return;
+        openChooseRecipeModal(slot.dataset.day, slot.dataset.meal);
     });
 
     grid.addEventListener("dragstart", (e) => {
-        const card = e.target.closest(".day-card");
-        if (!card) return;
+        const slot = e.target.closest(".meal-slot");
+        if (!slot) return;
         e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", card.dataset.day);
-        card.classList.add("dragging");
+        e.dataTransfer.setData("text/plain", `${slot.dataset.day}|${slot.dataset.meal}`);
+        slot.classList.add("dragging");
     });
 
     grid.addEventListener("dragend", (e) => {
-        const card = e.target.closest(".day-card");
-        if (card) card.classList.remove("dragging");
-        grid.querySelectorAll(".day-card.drag-over").forEach(c => {
-            c.classList.remove("drag-over");
+        const slot = e.target.closest(".meal-slot");
+        if (slot) slot.classList.remove("dragging");
+        grid.querySelectorAll(".meal-slot.drag-over").forEach(s => {
+            s.classList.remove("drag-over");
         });
     });
 
     grid.addEventListener("dragover", (e) => {
-        const card = e.target.closest(".day-card");
-        if (!card) return;
+        const slot = e.target.closest(".meal-slot");
+        if (!slot) return;
         e.preventDefault();
-        card.classList.add("drag-over");
+        slot.classList.add("drag-over");
     });
 
     grid.addEventListener("dragleave", (e) => {
-        const card = e.target.closest(".day-card");
-        if (card) card.classList.remove("drag-over");
+        const slot = e.target.closest(".meal-slot");
+        if (slot) slot.classList.remove("drag-over");
     });
 
     grid.addEventListener("drop", async (e) => {
-        const card = e.target.closest(".day-card");
-        if (!card) return;
+        const slot = e.target.closest(".meal-slot");
+        if (!slot) return;
         e.preventDefault();
-        card.classList.remove("drag-over");
-        const fromDay = e.dataTransfer.getData("text/plain");
-        const toDay = card.dataset.day;
+        slot.classList.remove("drag-over");
 
-        if (fromDay && toDay && fromDay !== toDay) {
-            await fetch("/menu/swap", {
+        const [fromDay, fromMeal] = (e.dataTransfer.getData("text/plain") || "").split("|");
+        const toDay = slot.dataset.day;
+        const toMeal = slot.dataset.meal;
+
+        if (!fromDay || !fromMeal) return;
+        if (fromDay === toDay && fromMeal === toMeal) return;
+
+        try {
+            await api("/menu/swap", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ day1: fromDay, day2: toDay })
+                body: JSON.stringify({
+                    day1: fromDay, meal1: fromMeal,
+                    day2: toDay, meal2: toMeal
+                })
             });
-            loadWeeklyMenu();
+        } catch (err) {
+            alert(err.message);
         }
+        loadWeeklyMenu();
     });
 }
 
