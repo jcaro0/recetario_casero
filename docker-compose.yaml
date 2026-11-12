@@ -5,19 +5,14 @@ services:
     ports:
       - "8000:8000"
 
+    environment:
+      DB_PATH: /app/data/recetario.db
+      FRONTEND_FOLDER: /app/frontend
+      PORT: "8000"
+
     volumes:
+      - ./backend/data:/app/data
       - ./backend/uploads:/app/uploads
       - ./frontend:/app/frontend:ro
 
-    depends_on:
-      - redis
-
-  redis:
-    image: redis:7
-    restart: always
-
-    volumes:
-      - redis_data:/data
-
-volumes:
-  redis_data:
+    restart: unless-stopped

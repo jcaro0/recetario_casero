@@ -3,6 +3,7 @@ import random
 
 from flask import Flask, request, jsonify
 
+import set_up
 import database as db
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -13,6 +14,9 @@ FRONTEND_FOLDER = os.environ.get(
 )
 
 app = Flask(__name__, static_folder=FRONTEND_FOLDER, static_url_path="")
+
+# Crea las tablas si no existen (idempotente).
+set_up.create_tables()
 
 
 # ---------------------------------------------------------
@@ -56,9 +60,8 @@ def api_get_menu():
 def api_generate_menu():
     recipes = db.get_all_recipes()
 
-    db.clear_menu()
-
     if not recipes:
+        db.clear_menu()
         return jsonify({"ok": True, "message": "No hay recetas guardadas."})
 
     if len(recipes) >= len(db.DAYS):
@@ -67,8 +70,7 @@ def api_generate_menu():
         # No hay recetas suficientes para no repetir: se rellena al azar
         chosen = [random.choice(recipes) for _ in db.DAYS]
 
-    for day, recipe in zip(db.DAYS, chosen):
-        db.set_menu_day(day, recipe["id"])
+    db.replace_menu({day: recipe["id"] for day, recipe in zip(db.DAYS, chosen)})
 
     return jsonify({"ok": True})
 
@@ -96,13 +98,11 @@ def api_set_menu_day(day):
         return jsonify({"error": "Día no válido"}), 400
 
     data = request.get_json(silent=True) or {}
-    recipe_id = data.get("recipe_id")
-
-    recipe = db.get_recipe(recipe_id)
+    recipe = db.get_recipe(data.get("recipe_id"))
     if not recipe:
         return jsonify({"error": "Receta no encontrada"}), 404
 
-    db.set_menu_day(day, recipe_id)
+    db.set_menu_day(day, recipe["id"])
 
     return jsonify({"ok": True})
 
@@ -113,35 +113,41 @@ def api_set_menu_day(day):
 
 @app.route("/shopping-list", methods=["GET"])
 def api_shopping_list():
-    menu = db.get_menu()
-
-    aggregated = {}
-
-    for recipe in menu.values():
-        if not recipe:
-            continue
-
-        for ing in recipe.get("ingredients", []):
-            name = (ing.get("name") or "").strip()
-            unit = (ing.get("unit") or "").strip()
-            qty = ing.get("qty") or 0
-
-            if not name:
-                continue
-
-            key = (name.lower(), unit.lower())
-
-            if key not in aggregated:
-                aggregated[key] = {"name": name, "unit": unit, "qty": 0}
-
-            aggregated[key]["qty"] += qty
-
-    return jsonify(list(aggregated.values()))
+    return jsonify(db.get_shopping_list())
 
 
 # ---------------------------------------------------------
 # RECETAS (sin fotos: solo nombre e ingredientes)
 # ---------------------------------------------------------
+
+def clean_ingredients(raw):
+    """Valida y normaliza la lista de ingredientes que llega del frontend."""
+    if not isinstance(raw, list):
+        return []
+
+    cleaned = []
+    for ing in raw:
+        if not isinstance(ing, dict):
+            continue
+
+        name = str(ing.get("name") or "").strip()
+        if not name:
+            continue
+
+        qty = ing.get("qty")
+        try:
+            qty = float(qty) if qty is not None else None
+        except (TypeError, ValueError):
+            qty = None
+
+        unit = str(ing.get("unit") or "").strip() or None
+        if qty is None:
+            unit = None
+
+        cleaned.append({"name": name, "qty": qty, "unit": unit})
+
+    return cleaned
+
 
 @app.route("/recipes", methods=["GET"])
 def api_list_recipes():
@@ -152,19 +158,11 @@ def api_list_recipes():
 def api_create_recipe():
     data = request.get_json(silent=True) or {}
 
-    name = (data.get("name") or "").strip()
-    ingredients = data.get("ingredients") or []
-
+    name = str(data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "El nombre es obligatorio"}), 400
 
-    recipe = {
-        "id": db.next_recipe_id(),
-        "name": name,
-        "ingredients": ingredients,
-    }
-
-    db.save_recipe(recipe)
+    recipe = db.create_recipe(name, clean_ingredients(data.get("ingredients")))
 
     return jsonify(recipe), 201
 

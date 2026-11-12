@@ -1,65 +1,91 @@
-import os
-import json
-from typing import Optional, cast
+"""
+Acceso a datos (SQLite). Misma idea que la versión de Redis:
+main.py solo habla con este módulo, nunca con SQL directamente.
+"""
 
-import redis
-
-REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
-REDIS_PORT = int(os.environ.get("REDIS_PORT", 6379))
-
-# Deben coincidir EXACTAMENTE (en minúscula) con los nombres de DAYS en script.js
-DAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
-
-_client: Optional["redis.Redis"] = None
-
-
-def get_redis() -> redis.Redis:
-    """Devuelve un cliente Redis reutilizable (conexión perezosa)."""
-    global _client
-    if _client is None:
-        _client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-    return _client
+import set_up
+from set_up import DAYS, connection
 
 
 # ---------------------------------------------------------
 # RECETAS
 # ---------------------------------------------------------
 
-def next_recipe_id():
-    return get_redis().incr("recipe:id:seq")
-
-
-def save_recipe(recipe):
-    r = get_redis()
-    r.hset("recipes", str(recipe["id"]), json.dumps(recipe))
-    return recipe
-
-
-def get_recipe(recipe_id):
-    if recipe_id is None:
+def _clean_qty(qty):
+    """SQLite devuelve REAL (200.0); lo mostramos como 200 si es entero."""
+    if qty is None:
         return None
-    r = get_redis()
-    data = cast(Optional[str], r.hget("recipes", str(recipe_id)))
-    return json.loads(data) if data else None
+    return int(qty) if float(qty).is_integer() else qty
 
 
-def get_all_recipes():
-    r = get_redis()
-    values = cast(list, r.hvals("recipes"))
-    recipes = [json.loads(v) for v in values]
-    recipes.sort(key=lambda x: x["id"])
+def _ingredient_dict(row):
+    return {"name": row["name"], "qty": _clean_qty(row["qty"]), "unit": row["unit"]}
+
+
+def _group_recipes(recipe_rows, ingredient_rows):
+    recipes = {r["id"]: {"id": r["id"], "name": r["name"], "ingredients": []}
+               for r in recipe_rows}
+    for ing in ingredient_rows:
+        recipe = recipes.get(ing["recipe_id"])
+        if recipe is not None:
+            recipe["ingredients"].append(_ingredient_dict(ing))
     return recipes
 
 
-def delete_recipe(recipe_id):
-    r = get_redis()
-    r.hdel("recipes", str(recipe_id))
+def create_recipe(name, ingredients):
+    """Inserta receta + ingredientes en una sola transacción y la devuelve."""
+    with connection() as conn:
+        cur = conn.execute("INSERT INTO recipes (name) VALUES (?)", (name,))
+        recipe_id = cur.lastrowid
+        conn.executemany(
+            "INSERT INTO ingredients (recipe_id, position, name, qty, unit) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                (recipe_id, pos, ing["name"], ing["qty"], ing["unit"])
+                for pos, ing in enumerate(ingredients)
+            ],
+        )
+    return get_recipe(recipe_id)
 
-    # Si esa receta estaba puesta en el menú de algún día, se limpia
-    menu = cast(dict, r.hgetall("menu"))
-    for day, rid in menu.items():
-        if str(rid) == str(recipe_id):
-            r.hdel("menu", day)
+
+def get_recipe(recipe_id):
+    try:
+        recipe_id = int(recipe_id)
+    except (TypeError, ValueError):
+        return None
+
+    with connection() as conn:
+        recipe = conn.execute(
+            "SELECT id, name FROM recipes WHERE id = ?", (recipe_id,)
+        ).fetchone()
+        if recipe is None:
+            return None
+        ingredients = conn.execute(
+            "SELECT recipe_id, name, qty, unit FROM ingredients "
+            "WHERE recipe_id = ? ORDER BY position, id",
+            (recipe_id,),
+        ).fetchall()
+
+    return _group_recipes([recipe], ingredients)[recipe_id]
+
+
+def get_all_recipes():
+    with connection() as conn:
+        recipe_rows = conn.execute(
+            "SELECT id, name FROM recipes ORDER BY id"
+        ).fetchall()
+        ingredient_rows = conn.execute(
+            "SELECT recipe_id, name, qty, unit FROM ingredients "
+            "ORDER BY recipe_id, position, id"
+        ).fetchall()
+    return list(_group_recipes(recipe_rows, ingredient_rows).values())
+
+
+def delete_recipe(recipe_id):
+    # Los ingredientes se borran por ON DELETE CASCADE y el día del menú
+    # que la usaba queda vacío por ON DELETE SET NULL.
+    with connection() as conn:
+        conn.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
 
 
 # ---------------------------------------------------------
@@ -68,42 +94,65 @@ def delete_recipe(recipe_id):
 
 def get_menu():
     """Devuelve un dict {dia: receta_completa_o_None}."""
-    r = get_redis()
-    raw = cast(dict, r.hgetall("menu"))
-
-    menu = {}
-    for day in DAYS:
-        rid = raw.get(day)
-        menu[day] = get_recipe(rid) if rid else None
-    return menu
+    recipes = {r["id"]: r for r in get_all_recipes()}
+    assigned = {row["day"]: row["recipe_id"] for row in set_up.read_menu()}
+    return {day: recipes.get(assigned.get(day)) for day in DAYS}
 
 
 def set_menu_day(day, recipe_id):
-    get_redis().hset("menu", day, recipe_id)
+    with connection() as conn:
+        conn.execute("UPDATE menu SET recipe_id = ? WHERE day = ?", (recipe_id, day))
+
+
+def replace_menu(assignments):
+    """Vacía el menú y asigna {dia: recipe_id} de golpe (una transacción)."""
+    with connection() as conn:
+        conn.execute("UPDATE menu SET recipe_id = NULL")
+        conn.executemany(
+            "UPDATE menu SET recipe_id = ? WHERE day = ?",
+            [(rid, day) for day, rid in assignments.items()],
+        )
 
 
 def swap_menu_days(day1, day2):
     """Intercambia la receta asignada a dos días (usado por el drag & drop)."""
-    r = get_redis()
-    raw = cast(dict, r.hgetall("menu"))
-
-    val1 = raw.get(day1)
-    val2 = raw.get(day2)
-
-    pipe = r.pipeline()
-
-    if val2 is not None:
-        pipe.hset("menu", day1, val2)
-    else:
-        pipe.hdel("menu", day1)
-
-    if val1 is not None:
-        pipe.hset("menu", day2, val1)
-    else:
-        pipe.hdel("menu", day2)
-
-    pipe.execute()
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT day, recipe_id FROM menu WHERE day IN (?, ?)", (day1, day2)
+        ).fetchall()
+        current = {r["day"]: r["recipe_id"] for r in rows}
+        conn.execute(
+            "UPDATE menu SET recipe_id = ? WHERE day = ?", (current.get(day2), day1)
+        )
+        conn.execute(
+            "UPDATE menu SET recipe_id = ? WHERE day = ?", (current.get(day1), day2)
+        )
 
 
 def clear_menu():
-    get_redis().delete("menu")
+    with connection() as conn:
+        conn.execute("UPDATE menu SET recipe_id = NULL")
+
+
+# ---------------------------------------------------------
+# LISTA DE LA COMPRA (agregada en SQL a partir del menú actual)
+# ---------------------------------------------------------
+
+def get_shopping_list():
+    with connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT MIN(i.name)                      AS name,
+                   COALESCE(i.unit, '')             AS unit,
+                   COALESCE(SUM(i.qty), 0)          AS qty
+            FROM menu m
+            JOIN ingredients i ON i.recipe_id = m.recipe_id
+            GROUP BY lower(trim(i.name)), lower(COALESCE(i.unit, ''))
+            ORDER BY lower(MIN(i.name))
+            """
+        ).fetchall()
+
+    return [
+        {"name": r["name"], "unit": r["unit"], "qty": _clean_qty(r["qty"])}
+        for r in rows
+    ]
