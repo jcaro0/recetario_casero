@@ -105,6 +105,22 @@
     margin-bottom: 20px;
 }
 
+/* Nuevo Modal de receta duplicada */
+#duplicateRecipeModal .modal-icon {
+    color: var(--danger);
+    font-size: 54px;
+}
+#duplicateRecipeModal h2 {
+    color: var(--brown-darker);
+    margin-bottom: 8px;
+}
+#duplicateRecipeModal p {
+    color: var(--brown-dark);
+    font-weight: 600;
+    line-height: 1.4;
+    margin-bottom: 20px;
+}
+
 @media (max-width: 600px) {
     .ingredient-row {
         grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 1.1fr) 36px;

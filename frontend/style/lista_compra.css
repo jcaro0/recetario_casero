@@ -33,3 +33,11 @@
     color: var(--muted);
     font-size: 14px;
 }
+
+.shopping-item.checked {
+    opacity: 0.6;
+}
+.shopping-item.checked .shopping-info strong {
+    text-decoration: line-through;
+    color: var(--muted);
+}

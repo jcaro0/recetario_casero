@@ -174,3 +174,32 @@
     text-align: center;
     padding: 20px 0;
 }
+
+/* --- BOTÓN DE RECARGAR DÍA --- */
+.regenerate-day-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.regenerate-day-btn:hover {
+    background: var(--yellow-pale);
+    color: var(--brown-darker);
+    transform: rotate(90deg) scale(1.05);
+}
+.regenerate-day-btn .material-symbols-rounded {
+    font-size: 20px;
+}
+.spinning {
+    animation: spin 0.6s linear infinite !important;
+}
+@keyframes spin { 
+    100% { transform: rotate(360deg); } 
+}

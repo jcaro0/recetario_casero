@@ -1,128 +1,98 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
-
     <meta charset="UTF-8">
-
-    <meta name="viewport"
-    content="width=device-width, initial-scale=1.0">
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Añadir receta</title>
-
     <link rel="stylesheet" href="style/style.css">
     <link rel="stylesheet" href="style/agregar_recetas.css">
-
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded" rel="stylesheet">
-
 </head>
-
 <body>
-
 <header class="topbar">
-
     <div class="logo">
-        📖 <span>Nueva receta</span>
+          <span>Nueva receta</span>
     </div>
-
     <nav class="top-nav">
-
         <a href="menu.html" class="nav-link">
             <span class="material-symbols-rounded">calendar_month</span>
             Menú
         </a>
-
         <a href="lista_compra.html" class="nav-link">
             <span class="material-symbols-rounded">shopping_cart</span>
             Compra
         </a>
-
         <a href="recetas.html" class="nav-link">
             <span class="material-symbols-rounded">menu_book</span>
             Recetas
         </a>
-
         <a href="agregar_recetas.html" class="nav-link active">
             <span class="material-symbols-rounded">add_circle</span>
             Añadir
         </a>
-
     </nav>
-
 </header>
 
 <main class="container">
+    <section class="hero recipeHero">
+        <h1>Nueva receta</h1>
+        <p>Añádela con su nombre, tipo e ingredientes.</p>
+    </section>
 
-<section class="hero recipeHero">
+    <form id="recipeForm" class="recipe-form">
+        <label for="recipeName">Nombre de la receta</label>
+        <input id="recipeName" required placeholder="Ej. Lasaña de carne">
 
-    <h1>Nueva receta</h1>
+        <label id="recipeTypeLabel">Tipo de receta</label>
+        <div class="segmented" role="radiogroup" aria-labelledby="recipeTypeLabel">
+            <span class="segmented-indicator"></span>
+            
+            <input type="radio" name="recipeType" id="type-ambos" value="ambos" checked>
+            <label for="type-ambos" class="segmented-option">
+                <span class="material-symbols-rounded">all_inclusive</span> Ambos
+            </label>
+            
+            <input type="radio" name="recipeType" id="type-comida" value="comida">
+            <label for="type-comida" class="segmented-option">
+                <span class="material-symbols-rounded">restaurant</span> Comida
+            </label>
+            
+            <input type="radio" name="recipeType" id="type-cena" value="cena">
+            <label for="type-cena" class="segmented-option">
+                <span class="material-symbols-rounded">bedtime</span> Cena
+            </label>
+            
+            <input type="radio" name="recipeType" id="type-extra" value="extra">
+            <label for="type-extra" class="segmented-option">
+                <span class="material-symbols-rounded">cookie</span> Extra
+            </label>
+        </div>
 
-    <p>Añádela con su nombre, tipo e ingredientes.</p>
+        <div class="ingredients-header">
+            <h2>Ingredientes</h2>
+        </div>
+        <div id="ingredientList"></div>
 
-</section>
-
-<form id="recipeForm" class="recipe-form">
-
-    <label for="recipeName">Nombre de la receta</label>
-
-    <input
-        id="recipeName"
-        required
-        placeholder="Ej. Lasaña de carne">
-
-    <label id="recipeTypeLabel">Tipo de receta</label>
-
-    <div class="segmented" role="radiogroup" aria-labelledby="recipeTypeLabel">
-
-        <span class="segmented-indicator"></span>
-
-        <input type="radio" name="recipeType" id="type-ambos" value="ambos" checked>
-        <label for="type-ambos" class="segmented-option">
-            <span class="material-symbols-rounded">all_inclusive</span>
-            Ambos
-        </label>
-
-        <input type="radio" name="recipeType" id="type-comida" value="comida">
-        <label for="type-comida" class="segmented-option">
-            <span class="material-symbols-rounded">restaurant</span>
-            Comida
-        </label>
-
-        <input type="radio" name="recipeType" id="type-cena" value="cena">
-        <label for="type-cena" class="segmented-option">
-            <span class="material-symbols-rounded">bedtime</span>
-            Cena
-        </label>
-
-        <input type="radio" name="recipeType" id="type-extra" value="extra">
-        <label for="type-extra" class="segmented-option">
-            <span class="material-symbols-rounded">cookie</span>
-            Extra
-        </label>
-
-    </div>
-
-    <div class="ingredients-header">
-
-        <h2>Ingredientes</h2>
-
-    </div>
-
-    <div id="ingredientList">
-
-    </div>
-
-    <button class="primary submitButton" type="submit">
-
-        <span class="material-symbols-rounded">save</span>
-
-        Guardar receta
-
-    </button>
-
-</form>
-
+        <button class="primary submitButton" type="submit">
+            <span class="material-symbols-rounded">save</span> Guardar receta
+        </button>
+    </form>
 </main>
+
+<!-- Modal: Confirmación Receta Duplicada -->
+<div id="duplicateRecipeModal" class="modal hidden">
+    <div class="modal-content">
+        <span class="material-symbols-rounded modal-icon" style="color: var(--danger);">
+            info
+        </span>
+        <h2>Receta duplicada</h2>
+        <p id="duplicateModalText"></p>
+        <div class="modal-buttons">
+            <button type="button" class="secondary" id="duplicateNoBtn">No</button>
+            <button type="button" class="primary" id="duplicateYesBtn">Sí</button>
+        </div>
+    </div>
+</div>
 
 <script src="scripts/script.js"></script>
 <script src="scripts/agregar_recetas.js"></script>

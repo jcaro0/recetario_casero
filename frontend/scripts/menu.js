@@ -1,26 +1,20 @@
-const DAYS = [
-    "Lunes",
-    "Martes",
-    "Miércoles",
-    "Jueves",
-    "Viernes",
-    "Sábado",
-    "Domingo"
-];
-
+let DAYS = [];
 const MEALS = [
-    { key: "comida", label: "Comida", icon: "🍽️" },
+    { key: "comida", label: "Comida", icon: "🍳" },
     { key: "cena", label: "Cena", icon: "🌙" }
 ];
-
-// Tu imagen para el menú vacío: guárdala en frontend/img/ con este nombre
-// (si usas otra extensión, cambia solo esta línea).
 const EMPTY_MENU_IMAGE = "img/sin_recetas.png";
-
-let currentEditSlot = null; // { day, meal }
+let currentEditSlot = null;
 let allRecipesCache = [];
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+    try {
+        DAYS = await api("/days");
+    } catch (e) {
+        DAYS = ["lunes", "martes", "miércoles", "jueves", "viernes"];
+    }
+    DAYS = DAYS.map(d => d.charAt(0).toUpperCase() + d.slice(1));
+    
     loadWeeklyMenu();
     setupModal();
     setupChooseRecipeModal();
@@ -32,11 +26,10 @@ function mealLabel(key) {
     return meal ? meal.label : key;
 }
 
-// Compartir menú semanal
 async function shareMenu(type) {
     try {
         const menu = await api("/menu");
-        let text = "🍽️ MENÚ SEMANAL\n\n";
+        let text = "📋 MENÚ SEMANAL\n\n";
         DAYS.forEach(day => {
             text += `${day}\n`;
             MEALS.forEach(meal => {
@@ -51,7 +44,6 @@ async function shareMenu(type) {
     }
 }
 
-// Carga del menú semanal
 function slotHtml(dayKey, meal, recipe) {
     const name = recipe?.name || "Sin receta";
     const count = recipe?.ingredients?.length || 0;
@@ -67,13 +59,10 @@ function slotHtml(dayKey, meal, recipe) {
     `;
 }
 
-// Estado vacío: todavía no hay recetas con las que montar un menú.
-// Es distinto de un fallo al cargar (ese se avisa en el catch de loadWeeklyMenu).
 function showNotEnoughRecipes(grid) {
     grid.innerHTML = `
         <div class="empty-state">
-            <img src="${EMPTY_MENU_IMAGE}" alt=""
-                 onerror="this.style.display='none'">
+            <img src="${EMPTY_MENU_IMAGE}" alt="" onerror="this.style.display='none'">
             <p>No hay suficientes recetas</p>
         </div>
     `;
@@ -83,33 +72,41 @@ async function loadWeeklyMenu() {
     const grid = document.getElementById("weekGrid");
     if (!grid) return;
     grid.innerHTML = "<p>Cargando menú...</p>";
+    
     try {
         const [menu, recipes] = await Promise.all([api("/menu"), api("/recipes")]);
-
-        // Las recetas "extra" no entran en el menú automático, así que no cuentan
         const usable = recipes.filter(r => r.type !== "extra");
         const generateButton = document.getElementById("generateButton");
+        
+        const N = DAYS.length;
+        const comidas = usable.filter(r => r.type === "comida").length;
+        const cenas = usable.filter(r => r.type === "cena").length;
+        const ambos = usable.filter(r => r.type === "ambos").length;
 
-        if (usable.length === 0) {
+        if (comidas + ambos < N || cenas + ambos < N || comidas + cenas + ambos < 2 * N) {
             if (generateButton) generateButton.style.display = "none";
             showNotEnoughRecipes(grid);
             return;
         }
-        if (generateButton) generateButton.style.display = "";
 
+        if (generateButton) generateButton.style.display = "";
+        
         grid.innerHTML = DAYS.map(day => {
             const dayKey = day.toLowerCase();
             const meals = menu[dayKey] || {};
+            // AQUÍ INYECTAMOS EL BOTÓN NUEVO
             return `
                 <div class="day-card" data-day="${dayKey}">
                     <div class="day-header">
                         <h3>${day}</h3>
-                        <span>🍽️</span>
+                        <button class="regenerate-day-btn" data-day="${dayKey}" title="Regenerar día">
+                            <span class="material-symbols-rounded">autorenew</span>
+                        </button>
                     </div>
                     ${MEALS.map(m => slotHtml(dayKey, m, meals[m.key])).join("")}
                     <div class="day-hint">
                         <span class="material-symbols-rounded">swap_horiz</span>
-                        Toca para cambiar • arrastra para mover
+                        Toca para cambiar o arrastra para mover
                     </div>
                 </div>
             `;
@@ -119,16 +116,14 @@ async function loadWeeklyMenu() {
     }
 }
 
-// Modal para regenerar menú
 function setupModal() {
     const modal = document.getElementById("modal");
     const open = document.getElementById("generateButton");
     const cancel = document.getElementById("cancelModal");
     const confirm = document.getElementById("confirmModal");
-
-    open.onclick = () => modal.classList.remove("hidden");
-    cancel.onclick = () => modal.classList.add("hidden");
-    confirm.onclick = async () => {
+    if (open) open.onclick = () => modal.classList.remove("hidden");
+    if (cancel) cancel.onclick = () => modal.classList.add("hidden");
+    if (confirm) confirm.onclick = async () => {
         modal.classList.add("hidden");
         try {
             const result = await api("/menu/generate", { method: "POST" });
@@ -140,19 +135,15 @@ function setupModal() {
     };
 }
 
-// Modal selector de receta
 function setupChooseRecipeModal() {
     const modal = document.getElementById("chooseRecipeModal");
     const closeBtn = document.getElementById("closeChooseModal");
     const searchInput = document.getElementById("recipeSearchInput");
-
-    closeBtn.onclick = () => closeChooseRecipeModal();
-
-    modal.addEventListener("click", (e) => {
+    if(closeBtn) closeBtn.onclick = () => closeChooseRecipeModal();
+    if(modal) modal.addEventListener("click", (e) => {
         if (e.target === modal) closeChooseRecipeModal();
     });
-
-    searchInput.addEventListener("input", () => {
+    if(searchInput) searchInput.addEventListener("input", () => {
         renderChooseRecipeList(searchInput.value);
     });
 }
@@ -163,19 +154,16 @@ async function openChooseRecipeModal(day, meal) {
     const dayLabel = document.getElementById("chooseRecipeDay");
     const searchInput = document.getElementById("recipeSearchInput");
     const list = document.getElementById("chooseRecipeList");
-
     dayLabel.textContent = `${capitalize(day)} (${mealLabel(meal).toLowerCase()})`;
     searchInput.value = "";
     modal.classList.remove("hidden");
     list.innerHTML = '<p class="choose-recipe-empty">Cargando recetas...</p>';
-
     try {
         allRecipesCache = await api("/recipes");
         renderChooseRecipeList("");
     } catch {
         list.innerHTML = '<p class="choose-recipe-empty">No se pudieron cargar las recetas.</p>';
     }
-
     searchInput.focus();
 }
 
@@ -184,7 +172,6 @@ function closeChooseRecipeModal() {
     currentEditSlot = null;
 }
 
-// Una receta 'comida' no entra en una cena (y al revés); 'ambos' y 'extra' valen siempre
 function fitsMeal(recipeType, meal) {
     return ["ambos", "extra", meal].includes(recipeType);
 }
@@ -193,41 +180,26 @@ function renderChooseRecipeList(query) {
     const list = document.getElementById("chooseRecipeList");
     const q = query.trim().toLowerCase();
     const meal = currentEditSlot?.meal;
-
     if (allRecipesCache.length === 0) {
-        list.innerHTML = `
-            <p class="choose-recipe-empty">
-                Todavía no tienes recetas guardadas.<br>Añade alguna primero.
-            </p>
-        `;
+        list.innerHTML = `<p class="choose-recipe-empty">Todavía no tienes recetas guardadas.<br>Añade alguna primero.</p>`;
         return;
     }
-
     const compatible = allRecipesCache.filter(r => fitsMeal(r.type, meal));
-
     if (compatible.length === 0) {
-        list.innerHTML = `
-            <p class="choose-recipe-empty">
-                No tienes recetas válidas para la ${escapeHtml(mealLabel(meal).toLowerCase())}.
-            </p>
-        `;
+        list.innerHTML = `<p class="choose-recipe-empty">No tienes recetas válidas para la ${escapeHtml(mealLabel(meal).toLowerCase())}.</p>`;
         return;
     }
-
     const filtered = compatible.filter(r => r.name.toLowerCase().includes(q));
-
     if (filtered.length === 0) {
         list.innerHTML = '<p class="choose-recipe-empty">No hay recetas que coincidan.</p>';
         return;
     }
-
     list.innerHTML = filtered.map(r => `
         <button class="choose-recipe-item" data-id="${r.id}">
             <span class="choose-recipe-name">${escapeHtml(r.name)} ${typeBadge(r.type)}</span>
             <span class="choose-recipe-count">${r.ingredients.length} ingredientes</span>
         </button>
     `).join("");
-
     list.querySelectorAll(".choose-recipe-item").forEach(btn => {
         btn.onclick = () => selectRecipeForSlot(Number(btn.dataset.id));
     });
@@ -249,17 +221,35 @@ async function selectRecipeForSlot(recipeId) {
     loadWeeklyMenu();
 }
 
-// Click y drag & drop sobre cada hueco (comida / cena)
 function setupWeekGridEvents() {
     const grid = document.getElementById("weekGrid");
     if (!grid) return;
-
-    grid.addEventListener("click", (e) => {
+    
+    // Controlador central de Clicks en el Grid
+    grid.addEventListener("click", async (e) => {
+        // 1. Botón regenerar solo un día
+        const regenBtn = e.target.closest(".regenerate-day-btn");
+        if (regenBtn) {
+            const day = regenBtn.dataset.day;
+            const icon = regenBtn.querySelector(".material-symbols-rounded");
+            icon.classList.add("spinning"); // Añadimos animación al clickar
+            try {
+                await api(`/menu/${day}/generate`, { method: "POST" });
+                loadWeeklyMenu();
+            } catch (err) {
+                alert(err.message);
+                icon.classList.remove("spinning");
+            }
+            return; // Cortamos ejecución para no abrir modales de receta
+        }
+        
+        // 2. Click estándar en la tarjeta para cambiar plato
         const slot = e.target.closest(".meal-slot");
         if (!slot) return;
         openChooseRecipeModal(slot.dataset.day, slot.dataset.meal);
     });
 
+    // Controladores Drag & Drop
     grid.addEventListener("dragstart", (e) => {
         const slot = e.target.closest(".meal-slot");
         if (!slot) return;
@@ -267,40 +257,30 @@ function setupWeekGridEvents() {
         e.dataTransfer.setData("text/plain", `${slot.dataset.day}|${slot.dataset.meal}`);
         slot.classList.add("dragging");
     });
-
     grid.addEventListener("dragend", (e) => {
         const slot = e.target.closest(".meal-slot");
         if (slot) slot.classList.remove("dragging");
-        grid.querySelectorAll(".meal-slot.drag-over").forEach(s => {
-            s.classList.remove("drag-over");
-        });
+        grid.querySelectorAll(".meal-slot.drag-over").forEach(s => s.classList.remove("drag-over"));
     });
-
     grid.addEventListener("dragover", (e) => {
         const slot = e.target.closest(".meal-slot");
         if (!slot) return;
         e.preventDefault();
         slot.classList.add("drag-over");
     });
-
     grid.addEventListener("dragleave", (e) => {
         const slot = e.target.closest(".meal-slot");
         if (slot) slot.classList.remove("drag-over");
     });
-
     grid.addEventListener("drop", async (e) => {
         const slot = e.target.closest(".meal-slot");
         if (!slot) return;
         e.preventDefault();
         slot.classList.remove("drag-over");
-
         const [fromDay, fromMeal] = (e.dataTransfer.getData("text/plain") || "").split("|");
         const toDay = slot.dataset.day;
         const toMeal = slot.dataset.meal;
-
-        if (!fromDay || !fromMeal) return;
-        if (fromDay === toDay && fromMeal === toMeal) return;
-
+        if (!fromDay || !fromMeal || (fromDay === toDay && fromMeal === toMeal)) return;
         try {
             await api("/menu/swap", {
                 method: "POST",
@@ -318,5 +298,6 @@ function setupWeekGridEvents() {
 }
 
 function capitalize(text) {
+    if(!text) return "";
     return text.charAt(0).toUpperCase() + text.slice(1);
 }
