@@ -7,12 +7,46 @@ base: **nunca copies la base del ordenador sobre la de la Raspberry**. Los cambi
 que estaban sin confirmar en recetas, raciones, preparación, notas y menú se mantienen.
 No se ha accedido a la Raspberry ni migrado la base real del ordenador.
 
+## Scripts de despliegue y pruebas
+
+Los tres lanzadores se pueden ejecutar desde cualquier directorio y tienen `--help`:
+
+```sh
+# Ordenador: construir, comprobar la base existente y arrancar en el puerto 8000.
+./despliegue_docker.sh
+# También admite: build, stop, status y logs.
+
+# Raspberry: preparar dependencias una vez; reinstalar si cambia requirements.txt.
+./despliegue_raspberry.sh install
+# Arranque con configuración cargada (puerto 80; usar systemd para ese puerto).
+./despliegue_raspberry.sh start
+
+# Solo en el ordenador de desarrollo: preparar herramientas de prueba una vez.
+./ejecutar_test.sh install
+# Ejecutar backend, arranque/reinicio y navegador, siempre con bases temporales.
+./ejecutar_test.sh
+# También permite ejecutar por separado: backend, startup o browser.
+```
+
+Los lanzadores de despliegue no inicializan ni migran bases automáticamente.
+No instalan herramientas de prueba en Raspberry. `ejecutar_test.sh install` crea
+`.venv-tests` e instala Playwright y su Chromium; si ya tienes un Chromium, indica
+`CHROMIUM_PATH=/ruta/chromium` para omitir la descarga. No modifica Python del sistema.
+Los siguientes tests no instalan nada. Para aprovechar otro entorno de desarrollo,
+usa `TEST_PYTHON=/ruta/venv/bin/python ./ejecutar_test.sh`.
+Los resultados se guardan en `tests/results/` (excluido de Git).
+
+Si ya tienes el servicio Raspberry instalado con el nombre anterior del lanzador,
+actualiza `ExecStart` a `/RUTA/AL/recetario/despliegue_raspberry.sh start` en la unidad
+instalada y ejecuta `sudo systemctl daemon-reload` antes de reiniciarlo. El ejemplo
+`deploy/recetario.service` ya está actualizado; conserva tu usuario y rutas propios.
+
 ## Rutas y comportamiento
 
 | Entorno | Puerto | Base activa |
 | --- | --- | --- |
 | Docker Compose | 8000 | `./backend/data/recetario.db` en el ordenador, montada como `/app/data/recetario.db` |
-| Raspberry: script antiguo y nuevo sin configurar | 80 | `<repositorio>/data/recetario.db` |
+| Raspberry: `despliegue_raspberry.sh` sin configurar | 80 | `<repositorio>/data/recetario.db` |
 | Backend Python sin `DB_PATH` | 8000 por defecto | `<repositorio>/backend/data/recetario.db` |
 | Raspberry: instalación recomendada | 80 | `/home/pi/.local/share/recetario/recetario.db`, después de copiar y verificar la base activa |
 
@@ -23,7 +57,7 @@ también detiene el arranque. No hay restauraciones ni migraciones automáticas.
 El script antiguo elegía `data/recetario.db`, mientras el backend y Docker elegían
 `backend/data/recetario.db`. **Si existen ambas, no elijas solo por fecha o tamaño**:
 comprueba qué ruta usaba el proceso y qué recetas contiene cada una. No se fusionan
-ni se trasladan silenciosamente. El script nuevo conserva su ruta histórica.
+ni se trasladan silenciosamente. `despliegue_raspberry.sh` conserva esa ruta histórica.
 
 Para comprobar una instalación configurada:
 
@@ -55,7 +89,7 @@ for value in Path('/proc/' + sys.argv[1] + '/environ').read_bytes().split(b'\0')
 PY
 ```
 
-Si no hay variable, revisa cómo se arrancó: `script.sh` exportaba su propia ruta.
+Si no hay variable, revisa cómo se arrancó: el lanzador de Raspberry exporta su propia ruta.
 En Docker la ruta del contenedor se corresponde con el montaje de Compose.
 
 ## Ordenador: Docker Compose
@@ -77,16 +111,16 @@ host sigue siendo la fuente de verdad. No borres ese directorio ni sus auxiliare
 2. Detén la aplicación antes de actualizar el esquema y construye la imagen:
 
    ```sh
-   docker compose stop backend
-   docker compose build backend
+   ./despliegue_docker.sh stop
+   ./despliegue_docker.sh build
    docker compose run --rm --no-deps backend python manage.py info
    docker compose run --rm --no-deps backend python manage.py backup
    docker compose run --rm --no-deps backend python manage.py migrate
    docker compose run --rm --no-deps backend python manage.py info
-   docker compose up -d backend
+   ./despliegue_docker.sh
    ```
 
-   La base existente del ordenador necesita la migración explícita de 3 a 4.
+   La base existente del ordenador necesita la migración explícita a la versión 5.
    `migrate` crea además su propia copia previa verificada. Si falla, no arranques
    hasta resolver la causa. No sustituyas los datos para forzar el arranque.
 
@@ -115,7 +149,7 @@ los tuyos** en archivos de configuración, servicios y comandos.
    ```sh
    sudo apt-get install python3 python3-venv
    cd /home/pi/recetario
-   ./script.sh install
+   ./despliegue_raspberry.sh install
    mkdir -p /home/pi/.config/recetario
    chmod 700 /home/pi/.config/recetario
    cp deploy/recetario.env.example /home/pi/.config/recetario/recetario.env
@@ -125,7 +159,7 @@ los tuyos** en archivos de configuración, servicios y comandos.
    Edita ese archivo: `DB_PATH` debe indicar la base **ya verificada**,
    `BACKUP_DIR` un directorio externo permanente y `PORT=80`.
    Las opciones se respetan desde el entorno. Para un arranque manual puedes usar
-   `RECETARIO_ENV=/home/pi/.config/recetario/recetario.env ./script.sh start`.
+   `RECETARIO_ENV=/home/pi/.config/recetario/recetario.env ./despliegue_raspberry.sh start`.
    El archivo se interpreta como shell: úsalo solo si es tuyo y de confianza.
    En systemd se usa `EnvironmentFile`; usa asignaciones simples con rutas absolutas.
 
@@ -157,7 +191,7 @@ los tuyos** en archivos de configuración, servicios y comandos.
    ```
 
    El proceso usa `User=pi` y solo `CAP_NET_BIND_SERVICE` para escuchar en el
-   puerto 80. El script rechaza root. No uses `sudo ./script.sh`, ni pongas capacidades
+   puerto 80. El script rechaza root. No uses `sudo ./despliegue_raspberry.sh`, ni pongas capacidades
    sobre el intérprete global de Python. Comprueba que tu systemd admite
    `AmbientCapabilities`; si no, actualiza el sistema antes de instalar el servicio.
    El arranque manual sin esa capacidad puede fallar en el puerto 80 y lo explica.
@@ -165,7 +199,7 @@ los tuyos** en archivos de configuración, servicios y comandos.
 
 5. Abre `http://IP_DE_LA_RASPBERRY/` desde el móvil o el ordenador en la misma red.
    El servidor escucha en `0.0.0.0`; permite el puerto 80 en tu cortafuegos local
-   si lo usas. Las dependencias solo se instalan con `./script.sh install`:
+   si lo usas. Las dependencias solo se instalan con `./despliegue_raspberry.sh install`:
    los siguientes arranques no ejecutan pip. Si cambia requirements, vuelve a instalar.
 
 ## Copias semanales: conservar las dos últimas
@@ -288,64 +322,12 @@ Nunca se hace para solucionar automáticamente un error de arranque. Primero rev
    solamente el número total de recetas. Las restauraciones de prueba se hacen
    únicamente en bases temporales (ver `tests/test_operations.py`).
 
-## Activar protección de modificaciones
+## Acceso desde la red local
 
-Está **desactivada por defecto** para que primero puedas configurar el acceso.
-Sin activarla, cualquier dispositivo con acceso de red puede modificar o borrar datos.
-La comprobación de origen limita peticiones desde otras páginas, pero no sustituye
-la autenticación. Las recetas y el menú siguen siendo consultables sin contraseña
-incluso al activarla: esta protección cubre escrituras, no confidencialidad.
-
-En Raspberry, como usuario normal:
-
-```sh
-.venv/bin/python backend/security.py /home/pi/.config/recetario/auth.json
-```
-
-Pide la contraseña sin mostrarla y su confirmación. Genera un hash PBKDF2 SHA256 con
-sal aleatoria y 600.000 iteraciones, y una clave aleatoria para firmar sesiones.
-El archivo se crea con permisos 600 y nunca sobrescribe uno existente. Añade al
-archivo `recetario.env`:
-
-```sh
-AUTH_CONFIG=/home/pi/.config/recetario/auth.json
-```
-
-Reinicia el servicio. Abre `http://IP_DE_LA_RASPBERRY/login.html` en cada dispositivo.
-Las sesiones duran hasta 8 horas desde su renovación, con cookies `HttpOnly` y
-`SameSite=Strict`. Todas las escrituras exigen sesión y token CSRF; también se
-protegen login y logout frente a peticiones de otras páginas. Las llamadas JS
-actuales añaden las cabeceras automáticamente. Si necesitas iniciar sesión mientras
-rellenas un formulario, se indica abrir `/login.html` en otra pestaña para conservarlo.
-Puedes cerrar sesión desde esa misma página. Hay un límite global de intentos de
-login (un intento cada 2 segundos) y una sola comprobación simultánea para limitar
-el consumo en la Pi; un cliente malicioso podría dificultar otros inicios de sesión.
-
-Para cambiar contraseña o invalidar todas las sesiones, genera un **nuevo archivo**
-con `security.py`, apunta `AUTH_CONFIG` a él y reinicia. Conserva su permiso 600.
-Un archivo inválido o inaccesible impide arrancar: nunca desactiva la protección en silencio.
-
-En Docker, crea la configuración con un contenedor puntual montando un directorio
-externo (después de construir la imagen):
-
-```sh
-mkdir -p "$HOME/.config/recetario-docker"
-chmod 700 "$HOME/.config/recetario-docker"
-docker compose run --rm --no-deps --user "$(id -u):$(id -g)" \
-  -v "$HOME/.config/recetario-docker:/config" backend python security.py /config/auth.json
-```
-
-Descomenta en Compose `AUTH_CONFIG: /config/auth.json` y el montaje de configuración,
-sustituyéndolo por el directorio absoluto que has creado. `docker compose up -d backend`
-recrea el contenedor con la configuración. Cada entorno debe tener su propia clave.
-
-**Riesgos que permanecen:** HTTP en el puerto 80 no cifra contraseñas ni cookies.
-Otros usuarios/equipos comprometidos en la red podrían interceptarlas. No abras
-puertos en el router ni expongas el servicio a Internet. Para redes no confiables,
-usa una VPN o HTTPS; `COOKIE_SECURE=1` solo cuando realmente accedas por HTTPS,
-porque sobre HTTP impediría enviar la cookie. No se añade infraestructura externa
-ni TLS automáticamente. Una autenticación de aplicación no protege frente a acceso
-físico, robo de la SD o acceso al sistema operativo y sus archivos.
+La aplicación funciona sin cuentas, sesiones de autenticación ni contraseña.
+Cualquier dispositivo con acceso a la red donde escucha puede realizar operaciones
+de escritura, incluidas modificaciones y borrados. No expongas el servicio
+directamente a Internet ni abras sus puertos en el router.
 
 ## Git: datos fuera del seguimiento
 
@@ -379,13 +361,14 @@ ambas: necesitarán una revisión de fusión, nunca sustituir una por la otra.
 ## Pruebas
 
 ```sh
-PYTHONPATH=backend python3 -m unittest discover -s tests -v
+./ejecutar_test.sh          # Backend, arranque/reinicio y navegador
+./ejecutar_test.sh backend  # Solo backend y operaciones
 ```
 
 Todas las bases se crean en directorios temporales. Hay pruebas de CRUD, persistencia,
-raciones, unidades, lista de compra, migraciones 1 y 3 a 4, conservación de IDs/menú,
+raciones, unidades, lista de compra, migraciones 1, 3 y 4 a 5, conservación de IDs/menú,
 rollback de DDL, fallo de backup, WAL, retención, restauración, archivos ausentes,
-esquemas incompatibles y sesiones/CSRF. Las pruebas de navegador y arranque real
+esquemas incompatibles y acceso sin autenticación. Las pruebas de navegador y arranque real
 están en [tests/README.md](tests/README.md); requieren permisos para sockets locales.
 No ejecutes `backend/meter_recetas_prueba.sh` contra datos reales.
 
@@ -442,7 +425,7 @@ posteriores; no vuelvas a ejecutar `init`.
    Ahora revisa `git status` y actualiza el código con `git pull --ff-only` cuando
    tus cambios locales estén resueltos. Si Git lo rechaza, conserva todo y resuelve
    los cambios sin forzar ni restaurar archivos de base de datos.
-6. Instala dependencias (`./script.sh install`), configura `recetario.env` con
+6. Instala dependencias (`./despliegue_raspberry.sh install`), configura `recetario.env` con
    **la base externa** y `PORT=80`, y adapta los servicios como se explica arriba.
 7. Carga la configuración. Ejecuta `manage.py info`, después `manage.py migrate`
    (hace otra copia verificada) y de nuevo `manage.py info`, siempre con el servicio
@@ -470,7 +453,7 @@ posteriores; no vuelvas a ejecutar `init`.
 
 3. Si el backup falla, **no continúes**. Si funciona, revisa `git status` y ejecuta
    `git pull --ff-only`. No transfieras ninguna base desde el ordenador.
-4. Ejecuta `./script.sh install` cuando cambien las dependencias. Ejecuta
+4. Ejecuta `./despliegue_raspberry.sh install` cuando cambien las dependencias. Ejecuta
    `.venv/bin/python backend/manage.py migrate`: comprueba la versión y crea una
    copia adicional si hace falta migrar. Luego repite `manage.py info`.
 5. Arranca `sudo systemctl start recetario`, revisa `journalctl -u recetario -n 40`
@@ -482,3 +465,34 @@ posteriores; no vuelvas a ejecutar `init`.
 
 Así, si tenías 20 recetas y añadiste 5 durante el desarrollo, el respaldo y la
 migración toman la base **actual con 25**, conservando sus IDs y relaciones.
+
+## Comensales semanales, ingredientes y actualización del esquema 5
+
+Al regenerar, la confirmación pide un entero positivo e inicia con el último valor
+semanal o 2. Cancelar no escribe nada. «Aplicar a todo el menú» guarda la preferencia
+y actualiza todos los huecos, incluidos los vacíos, en una sola transacción; no
+cambia recetas ni sus raciones. Las nuevas asignaciones heredan la preferencia.
+Puedes ajustar cada comida después; «Originales» vuelve a las raciones de la receta.
+Los días inactivos siguen excluidos de la compra.
+
+Los alias de ingredientes se definen explícitamente en `backend/normalize.py`.
+Se aplican al cálculo y a las marcas, sin reescribir los nombres de las recetas.
+Tomate, tomate frito y tomate triturado permanecen separados. Las cantidades de
+texto y las desconocidas se conservan; solo las numéricas se escalan. Se suman
+kg/g y l/ml, y los alias de unidades compatibles; cucharadas, cucharaditas y tazas
+se mantienen separadas entre sí y de los gramos. Las marcas antiguas se reconocen
+por nombre y unidad compatibles, y desmarcar elimina también sus alias antiguos.
+Si se fusionan varias filas equivalentes, una marca existente del mismo ingrediente
+y unidad compatible marca la fila resultante; unidades incompatibles nunca se cruzan.
+
+Esta actualización requiere una migración aditiva a la versión 5: crea `settings`
+para la preferencia semanal. No transforma recetas ni marcas existentes. En **cada
+instalación**, detén la aplicación y ejecuta el procedimiento de migración ya
+documentado con `DB_PATH` apuntando a su propia base y `BACKUP_DIR` configurado.
+`manage.py migrate` crea y verifica el respaldo antes de modificar el esquema;
+si falla, revierte la transacción. No ejecutes `init` sobre una base existente.
+Después reconstruye/reinicia Docker (8000) o reinicia el servicio Raspberry (80).
+No se necesitan dependencias adicionales de producción. Elimina las antiguas
+variables de configuración de acceso si aún están en tu archivo de entorno.
+
+Las pruebas de desarrollo y evidencias se describen en `tests/README.md`.

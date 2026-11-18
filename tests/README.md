@@ -3,22 +3,43 @@ Pruebas del recetario
 
 Las pruebas utilizan bases SQLite temporales. No abren ni modifican la base de datos de la aplicación.
 
-API, migración de versión 3 a 4, persistencia y cálculos (solo requiere las dependencias actuales del backend):
+Desde el ordenador de desarrollo, prepara las herramientas una sola vez:
 
 ```sh
-PYTHONPATH=backend python3 -m unittest discover -s tests -v
+./ejecutar_test.sh install
 ```
 
-Recorrido completo con navegador, incluidos cancelar, Enter, preparación, notas, comensales y un ancho móvil de 375 px:
+Crea `.venv-tests` (excluido de Git), instala las dependencias del backend,
+Playwright y Chromium. No cambia las dependencias ni el entorno de producción.
+Si ya tienes Chromium, usa `CHROMIUM_PATH=/usr/bin/chromium ./ejecutar_test.sh install`
+para omitir su descarga. `TEST_VENV_DIR` permite cambiar la carpeta del entorno.
+En Linux pueden ser necesarias las bibliotecas del sistema que indique Playwright;
+el script no instala paquetes del sistema ni usa sudo.
+
+Ejecutar las pruebas no instala nada:
 
 ```sh
-# Herramientas de desarrollo opcionales, en un entorno temporal:
-python3 -m venv /tmp/recetario-tests
-/tmp/recetario-tests/bin/pip install -r backend/requirements.txt playwright
-CHROMIUM_PATH=/usr/bin/chromium PYTHONPATH=backend /tmp/recetario-tests/bin/python tests/browser_recipes.py
+./ejecutar_test.sh          # Todas: backend, arranque/reinicio y navegador real
+./ejecutar_test.sh backend # API, SQLite, migraciones y operaciones
+./ejecutar_test.sh startup # Lanzador Raspberry y Waitress con reinicio real
+./ejecutar_test.sh browser # Interfaz con Chromium, escritorio y móvil de 375 px
 ```
 
-La prueba de navegador arranca su propio servidor local y lo detiene al terminar. Requiere Chromium instalado; `CHROMIUM_PATH` permite indicar su ubicación. Guarda una captura móvil en `/tmp/recetario-form-mobile.png`. No se añade Playwright a las dependencias de producción.
+Para reutilizar un entorno de desarrollo existente:
+
+```sh
+TEST_PYTHON=/tmp/recetario-tests/bin/python ./ejecutar_test.sh
+```
+
+El lanzador funciona desde cualquier directorio. Reemplaza la configuración de datos
+heredada por rutas temporales y no carga `RECETARIO_ENV`. Cada prueba prepara su
+propia base SQLite temporal. Ante cualquier fallo devuelve un código de error y no
+continúa con las siguientes suites. Guarda registros y capturas en `tests/results/`
+(excluido de Git); `TEST_RESULTS_DIR` permite elegir otra carpeta de resultados.
+
+La prueba de navegador levanta un servidor local aislado y lo detiene al terminar.
+Usa `CHROMIUM_PATH` si lo indicas; si no, busca Chromium en el sistema y después el
+instalado por Playwright. No se añade Playwright ni Chromium a producción o Raspberry.
 
 Comportamiento
 -------------
@@ -27,10 +48,10 @@ Comportamiento
 - En preparación, Enter avanza o añade un paso; un paso vacío lleva a notas. Mayús + Enter introduce una línea dentro del paso.
 - En notas, Enter introduce una línea. Tab lleva al botón Guardar receta; Enter sobre ese botón guarda si los datos obligatorios son válidos.
 - La edición guarda con PUT y conserva el identificador; Cancelar vuelve a recetas sin escribir.
-- Los comensales se guardan por comida/cena. Sin selección explícita se usan las raciones originales, también después de editar la receta. «Originales» elimina la selección explícita.
+- Los comensales se guardan por comida/cena. Las nuevas asignaciones heredan la preferencia semanal (2 inicialmente). Un `people: null` explícito usa las raciones originales. «Originales» elimina la selección explícita.
 - La migración se ejecuta explícitamente con `manage.py migrate`, con el servicio detenido y BACKUP_DIR configurado; primero verifica una copia. El arranque rechaza bases pendientes de migración. Añade columnas sin borrar recetas, ingredientes, menú ni marcas de compra; las recetas antiguas parten de 2 raciones y sin pasos/notas.
-- En la compra se convierten kilos a gramos, litros a mililitros y alias de unidades. Otras unidades se mantienen separadas. Se redondea el total a 3 decimales, sin ceros decimales innecesarios.
-- Las cantidades de texto libre se conservan sin multiplicar ni sumar; no se interpretan fracciones como `1/2` ni conversiones entre tazas, cucharadas y gramos.
+- En la compra se convierten kilos a gramos, litros a mililitros y alias de unidades. Otras unidades se mantienen separadas. Se redondea el total a 6 decimales, sin ceros decimales innecesarios.
+- Las cantidades de texto libre se conservan sin multiplicar ni sumar; se interpretan decimales, fracciones y fracciones Unicode. No se convierten tazas o cucharadas a gramos.
 
 El proyecto no tiene configurados un linter ni un proceso de compilación del frontend. Se comprueba la sintaxis con `node --check` y `python3 -m compileall -q backend tests`, además de `git diff --check`.
 
@@ -40,13 +61,15 @@ Seguridad y despliegue
 
 `test_operations.py` verifica copias con WAL, restauración sobre bases temporales,
 retención, fallo de backup, rollback de migraciones, bases ausentes, esquemas futuros,
-sesiones, CSRF y rutas/puertos previstos. La prueba de navegador también inicia sesión,
-edita una receta con CSRF y cierra sesión.
+rutas y puertos previstos, edición sin autenticación y comensales semanales.
+`test_scripts.py` comprueba los lanzadores desde otro directorio, el fallo de la
+comprobación de base antes de arrancar Docker (con Docker simulado), la selección
+del lanzador en systemd y el aislamiento/propagación de errores del ejecutor de tests.
 
 Para comprobar el script desde otro directorio y el servidor Waitress real:
 
 ```sh
-PYTHONPATH=backend /tmp/recetario-tests/bin/python tests/smoke_startup.py
+./ejecutar_test.sh startup
 ```
 
 Usa una base y una configuración temporal de venv; abre un puerto efímero, reinicia
