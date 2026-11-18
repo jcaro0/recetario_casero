@@ -1,4 +1,4 @@
-"""Arranca script.sh desde /tmp con SQLite temporal y Waitress real.
+"""Arranca despliegue_raspberry.sh desde /tmp con SQLite temporal y Waitress real.
 Requiere las dependencias del backend; abre exclusivamente un puerto efímero.
 """
 import json
@@ -35,7 +35,7 @@ def run():
             port = sock.getsockname()[1]
         env = dict(os.environ, DB_PATH=db.DB_PATH, VENV_DIR=str(venv), PORT=str(port), RECETARIO_ENV='')
         def start():
-            return subprocess.Popen(['bash', str(repo / 'script.sh')], cwd='/tmp', env=env,
+            return subprocess.Popen(['bash', str(repo / 'despliegue_raspberry.sh')], cwd='/tmp', env=env,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         for _ in range(2):
             process = start()
@@ -56,10 +56,10 @@ def run():
                 process.terminate()
                 process.communicate(timeout=5)
         env['DB_PATH'] = str(root / 'unexpected-missing.db')
-        result = subprocess.run(['bash', str(repo / 'script.sh')], cwd='/tmp', env=env, capture_output=True, text=True)
+        result = subprocess.run(['bash', str(repo / 'despliegue_raspberry.sh')], cwd='/tmp', env=env, capture_output=True, text=True)
         assert result.returncode != 0 and 'Base ausente' in result.stderr, result
         assert not Path(env['DB_PATH']).exists()
-        print('OK: script.sh desde otro directorio, Waitress, persistencia tras reinicio y rechazo de base ausente')
+        print('OK: despliegue_raspberry.sh desde otro directorio, Waitress, persistencia tras reinicio y rechazo de base ausente')
 
 if __name__ == '__main__':
     run()

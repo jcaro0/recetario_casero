@@ -1,4 +1,5 @@
 .venv
+.venv-tests/
 */__pycache__
 redis-data
 *.rdb

@@ -35,7 +35,7 @@ def backup(source, directory, label='manual', retain=None):
     if not directory.is_absolute():
         raise ValueError('BACKUP_DIR debe ser absoluto y estar fuera del repositorio.')
     code_dir = Path(__file__).resolve().parent
-    protected = code_dir.parent if (code_dir.parent / 'script.sh').is_file() else code_dir
+    protected = code_dir.parent if (code_dir.parent / 'despliegue_raspberry.sh').is_file() else code_dir
     if directory.resolve().is_relative_to(protected):
         raise ValueError('BACKUP_DIR debe estar fuera del directorio del código, no dentro del repositorio.')
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)

@@ -207,7 +207,7 @@ class OperationsTests(unittest.TestCase):
         self.assertIn('8000:8000', compose)
         self.assertIn('./backend/data:/app/data', compose)
         self.assertIn('DB_PATH: /app/data/recetario.db', compose)
-        script = (root / 'script.sh').read_text()
+        script = (root / 'despliegue_raspberry.sh').read_text()
         self.assertIn('${PORT:-80}', script)
         self.assertIn('$SCRIPT_DIR/data/recetario.db', script)
         self.assertIn('$BACKEND_DIR/requirements.txt', script)
