@@ -9,6 +9,8 @@ services:
       DB_PATH: /app/data/recetario.db
       FRONTEND_FOLDER: /app/frontend
       PORT: "8000"
+      # Días del menú (por defecto lunes a viernes). Ejemplo con la semana completa:
+      # MENU_DAYS: "lunes,martes,miércoles,jueves,viernes,sábado,domingo"
 
     volumes:
       - ./backend/data:/app/data

@@ -10,7 +10,7 @@ async function loadRecipesView() {
     try {
         const recipes = await api("/recipes");
         if (recipes.length === 0) {
-            list.innerHTML = "<p>Todavía no has guardado ninguna receta.</p>";
+            list.innerHTML = emptyStateHtml("No hay recetas añadidas");
             return;
         }
         list.innerHTML = recipes.map(recipe => `

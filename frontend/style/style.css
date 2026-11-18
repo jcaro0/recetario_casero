@@ -246,6 +246,7 @@ button:hover {
     justify-content: center;
     align-items: center;
     padding: 20px;
+    z-index: 100; /* por encima de la cabecera fija (z-index 10) y del dropdown (99) */
 }
 
 .modal-content {
@@ -272,6 +273,26 @@ button:hover {
 
 .modal-buttons button {
     flex: 1;
+}
+
+/* Texto de un modal de confirmación y su botón de aceptar */
+.modal-text {
+    color: var(--brown-darker);
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.confirm {
+    background: var(--brown);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 15px;
+    font-weight: 600;
+}
+
+.confirm:hover {
+    background: var(--brown-dark);
 }
 
 .hidden {

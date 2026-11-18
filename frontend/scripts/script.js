@@ -94,6 +94,19 @@ function typeBadge(type) {
     return `<span class="type-badge type-${t}">${TYPE_LABELS[t]}</span>`;
 }
 
+// Estado vacío compartido (menú, compra, recetas): tu imagen y el mensaje centrado debajo.
+// Guarda la imagen en frontend/img/sin_recetas.png (o cambia la ruta aquí).
+const EMPTY_IMAGE = "img/sin_recetas.png";
+
+function emptyStateHtml(message) {
+    return `
+        <div class="empty-state">
+            <img src="${EMPTY_IMAGE}" alt="" onerror="this.style.display='none'">
+            <p>${escapeHtml(message)}</p>
+        </div>
+    `;
+}
+
 // Inicialización de elementos comunes
 document.addEventListener("DOMContentLoaded", () => {
     setupShareDropdown();

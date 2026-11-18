@@ -1,21 +1,10 @@
-const DAYS = [
-    "Lunes",
-    "Martes",
-    "Miércoles",
-    "Jueves",
-    "Viernes",
-    "Sábado",
-    "Domingo"
-];
+// Los días activos los decide el servidor (variable MENU_DAYS) y se piden a /days
+let DAYS = []; // [{ key: "lunes", label: "Lunes" }, ...]
 
 const MEALS = [
     { key: "comida", label: "Comida", icon: "🍽️" },
     { key: "cena", label: "Cena", icon: "🌙" }
 ];
-
-// Tu imagen para el menú vacío: guárdala en frontend/img/ con este nombre
-// (si usas otra extensión, cambia solo esta línea).
-const EMPTY_MENU_IMAGE = "img/sin_recetas.png";
 
 let currentEditSlot = null; // { day, meal }
 let allRecipesCache = [];
@@ -27,6 +16,14 @@ document.addEventListener("DOMContentLoaded", () => {
     setupWeekGridEvents();
 });
 
+function capitalize(text) {
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function setDays(keys) {
+    DAYS = keys.map(key => ({ key, label: capitalize(key) }));
+}
+
 function mealLabel(key) {
     const meal = MEALS.find(m => m.key === key);
     return meal ? meal.label : key;
@@ -35,12 +32,13 @@ function mealLabel(key) {
 // Compartir menú semanal
 async function shareMenu(type) {
     try {
-        const menu = await api("/menu");
+        const [days, menu] = await Promise.all([api("/days"), api("/menu")]);
+        setDays(days);
         let text = "🍽️ MENÚ SEMANAL\n\n";
         DAYS.forEach(day => {
-            text += `${day}\n`;
+            text += `${day.label}\n`;
             MEALS.forEach(meal => {
-                const recipe = menu[day.toLowerCase()]?.[meal.key];
+                const recipe = menu[day.key]?.[meal.key];
                 text += `  ${meal.label}: ${recipe?.name || "Sin receta"}\n`;
             });
             text += "\n";
@@ -67,46 +65,38 @@ function slotHtml(dayKey, meal, recipe) {
     `;
 }
 
-// Estado vacío: todavía no hay recetas con las que montar un menú.
-// Es distinto de un fallo al cargar (ese se avisa en el catch de loadWeeklyMenu).
-function showNotEnoughRecipes(grid) {
-    grid.innerHTML = `
-        <div class="empty-state">
-            <img src="${EMPTY_MENU_IMAGE}" alt=""
-                 onerror="this.style.display='none'">
-            <p>No hay suficientes recetas</p>
-        </div>
-    `;
-}
-
 async function loadWeeklyMenu() {
     const grid = document.getElementById("weekGrid");
+    const generateButton = document.getElementById("generateButton");
     if (!grid) return;
     grid.innerHTML = "<p>Cargando menú...</p>";
     try {
-        const [menu, recipes] = await Promise.all([api("/menu"), api("/recipes")]);
+        // Peticiones en paralelo: días, ¿hay recetas suficientes? y menú
+        const [days, status, menu] = await Promise.all([
+            api("/days"),
+            api("/menu/status"),
+            api("/menu")
+        ]);
+        setDays(days);
 
-        // Las recetas "extra" no entran en el menú automático, así que no cuentan
-        const usable = recipes.filter(r => r.type !== "extra");
-        const generateButton = document.getElementById("generateButton");
-
-        if (usable.length === 0) {
+        // Sin el mínimo de recetas no se pinta el calendario ni el botón de regenerar.
+        // Es distinto de un fallo al cargar (ese cae en el catch).
+        if (!status.enough) {
             if (generateButton) generateButton.style.display = "none";
-            showNotEnoughRecipes(grid);
+            grid.innerHTML = emptyStateHtml("No hay suficientes recetas");
             return;
         }
         if (generateButton) generateButton.style.display = "";
 
         grid.innerHTML = DAYS.map(day => {
-            const dayKey = day.toLowerCase();
-            const meals = menu[dayKey] || {};
+            const meals = menu[day.key] || {};
             return `
-                <div class="day-card" data-day="${dayKey}">
+                <div class="day-card" data-day="${day.key}">
                     <div class="day-header">
-                        <h3>${day}</h3>
+                        <h3>${escapeHtml(day.label)}</h3>
                         <span>🍽️</span>
                     </div>
-                    ${MEALS.map(m => slotHtml(dayKey, m, meals[m.key])).join("")}
+                    ${MEALS.map(m => slotHtml(day.key, m, meals[m.key])).join("")}
                     <div class="day-hint">
                         <span class="material-symbols-rounded">swap_horiz</span>
                         Toca para cambiar • arrastra para mover
@@ -131,8 +121,7 @@ function setupModal() {
     confirm.onclick = async () => {
         modal.classList.add("hidden");
         try {
-            const result = await api("/menu/generate", { method: "POST" });
-            if (result && result.message) alert(result.message);
+            await api("/menu/generate", { method: "POST" });
         } catch (e) {
             alert("No se pudo regenerar el menú: " + e.message);
         }
@@ -184,7 +173,8 @@ function closeChooseRecipeModal() {
     currentEditSlot = null;
 }
 
-// Una receta 'comida' no entra en una cena (y al revés); 'ambos' y 'extra' valen siempre
+// Una receta 'comida' no entra en una cena (y al revés); 'ambos' y 'extra' valen siempre.
+// Al cambiar a mano se puede repetir receta libremente.
 function fitsMeal(recipeType, meal) {
     return ["ambos", "extra", meal].includes(recipeType);
 }
@@ -315,8 +305,4 @@ function setupWeekGridEvents() {
         }
         loadWeeklyMenu();
     });
-}
-
-function capitalize(text) {
-    return text.charAt(0).toUpperCase() + text.slice(1);
 }

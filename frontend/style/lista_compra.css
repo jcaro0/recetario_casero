@@ -16,12 +16,25 @@
     padding: 16px;
     border-radius: 18px;
     box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: opacity .2s;
 }
 
 .shopping-item input[type=checkbox] {
     width: 24px;
     height: 24px;
     accent-color: var(--brown);
+    cursor: pointer;
+}
+
+/* Ingrediente ya comprado / que ya tenemos en casa */
+.shopping-item.checked {
+    opacity: .6;
+}
+
+.shopping-item.checked .shopping-info strong {
+    text-decoration: line-through;
+    color: var(--muted);
 }
 
 .shopping-info {

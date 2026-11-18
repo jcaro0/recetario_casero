@@ -1,63 +1,35 @@
 """
-Creación de la base de datos SQL (SQLite) y lectura de todas sus tablas.
+Esquema de la base de datos y migraciones entre versiones.
 
-Uso:
-    python set_up.py          # crea/actualiza las tablas y muestra un resumen
+Este módulo SOLO crea tablas y migra datos antiguos. La conexión, las rutas y
+las constantes viven en database.py, que importa este módulo únicamente cuando
+detecta que falta una tabla o que el esquema es de una versión anterior.
 
-También lo importa main.py, así que la base de datos se crea (o se actualiza
-desde la versión anterior) sola cada vez que arranca la aplicación.
+Uso manual (opcional, la app también lo hace sola):
+    python set_up.py
 
-Esquema (versión 2):
-    recipes      (id, name, type)                 type: ambos | comida | cena | extra
-    ingredients  (id, recipe_id, position, name, qty, unit)
-    menu         (day, meal, recipe_id)           meal: comida | cena
+Esquema (versión 3):
+    recipes           (id, name, type)             type: ambos | comida | cena | extra
+    ingredients       (id, recipe_id, position, name, qty, unit)
+    menu              (day, meal, recipe_id)       meal: comida | cena
+    shopping_checked  (name, unit)                 ingredientes ya comprados / en casa
 """
 
-import os
-import sqlite3
-from contextlib import contextmanager
-
+from database import (
+    ALL_DAYS,
+    DB_PATH,
+    MEALS,
+    RECIPE_TYPES,
+    SCHEMA_VERSION,
+    connection,
+    read_all,
+)
 from normalize import collapse_spaces, normalize_ingredient_name, normalize_unit
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Fichero de la base de datos. En Docker se monta en /app/data (volumen).
-DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "data", "recetario.db"))
-
-SCHEMA_VERSION = 2
-
-# Deben coincidir EXACTAMENTE (en minúscula) con los nombres de DAYS en menu.js
-DAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
-MEALS = ["comida", "cena"]
-RECIPE_TYPES = ["ambos", "comida", "cena", "extra"]
 
 
 def _sql_list(values):
+    """['a', 'b'] -> "'a', 'b'" para usar dentro de un CHECK (... IN (...))."""
     return ", ".join(f"'{v}'" for v in values)
-
-
-# ---------------------------------------------------------
-# CONEXIÓN
-# ---------------------------------------------------------
-
-@contextmanager
-def connection():
-    """
-    Abre una conexión, hace commit si todo va bien (rollback si hay error)
-    y la cierra siempre. Una conexión por operación = seguro con hilos.
-    """
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")  # hay que activarlo en cada conexión
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 
 # ---------------------------------------------------------
@@ -67,9 +39,12 @@ def connection():
 def _menu_sql():
     return f"""
     -- Dos filas por día (comida y cena); recipe_id NULL = sin receta.
-    -- Si se borra la receta, el hueco queda vacío automáticamente.
+    --  * CHECK (day IN ...): valida contra los 7 días (ALL_DAYS), no solo contra
+    --    los activos, así se puede pasar de 5 a 7 días (MENU_DAYS) sin recrear la BD.
+    --  * CHECK (meal IN ...): solo 'comida' o 'cena'.
+    --  * ON DELETE SET NULL: si se borra la receta, el hueco queda vacío solo.
     CREATE TABLE IF NOT EXISTS menu (
-        day       TEXT NOT NULL CHECK (day IN ({_sql_list(DAYS)})),
+        day       TEXT NOT NULL CHECK (day IN ({_sql_list(ALL_DAYS)})),
         meal      TEXT NOT NULL CHECK (meal IN ({_sql_list(MEALS)})),
         recipe_id INTEGER REFERENCES recipes(id) ON DELETE SET NULL,
         PRIMARY KEY (day, meal)
@@ -79,6 +54,9 @@ def _menu_sql():
 
 def _schema_sql():
     return f"""
+    -- Recetas. El tipo decide en qué hueco del menú pueden entrar:
+    --   'ambos' (por defecto) comida o cena, 'comida', 'cena', y
+    --   'extra' = elaboraciones especiales que nunca entran en el menú automático.
     CREATE TABLE IF NOT EXISTS recipes (
         id    INTEGER PRIMARY KEY AUTOINCREMENT,
         name  TEXT NOT NULL CHECK (length(trim(name)) > 0),
@@ -86,11 +64,15 @@ def _schema_sql():
               CHECK (type IN ({_sql_list(RECIPE_TYPES)}))
     );
 
+    -- Ingredientes de cada receta.
+    --  * ON DELETE CASCADE: al borrar la receta se borran sus ingredientes.
+    --  * position conserva el orden en que se escribieron.
+    --  * name se guarda ya normalizado (Cebolla, Pina...) para poder sumarlos.
     CREATE TABLE IF NOT EXISTS ingredients (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
         recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
-        position  INTEGER NOT NULL DEFAULT 0,   -- orden dentro de la receta
-        name      TEXT NOT NULL CHECK (length(trim(name)) > 0),  -- ya normalizado
+        position  INTEGER NOT NULL DEFAULT 0,
+        name      TEXT NOT NULL CHECK (length(trim(name)) > 0),
         qty       REAL,                         -- NULL = sin cantidad
         unit      TEXT                          -- NULL = sin unidad
     );
@@ -99,16 +81,30 @@ def _schema_sql():
         ON ingredients(recipe_id, position);
 
     {_menu_sql()}
+
+    -- Lista de la compra: ingredientes ya comprados o que ya hay en casa.
+    -- La lista en sí se calcula al vuelo a partir del menú; aquí solo se guarda
+    -- la marca. Clave = (nombre normalizado, unidad); '' significa "sin unidad".
+    -- Se vacía al generar un menú nuevo.
+    CREATE TABLE IF NOT EXISTS shopping_checked (
+        name TEXT NOT NULL,
+        unit TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (name, unit)
+    );
     """
 
+
+# ---------------------------------------------------------
+# MIGRACIONES
+# ---------------------------------------------------------
 
 def _migrate_to_v2(conn):
     """
-    Actualiza una base creada con la versión 1 (sin tipo de receta, menú de una
-    sola comida al día e ingredientes sin normalizar). No pierde datos:
+    Actualiza una base de la versión 1 (sin tipo de receta, menú de una sola
+    comida al día e ingredientes sin normalizar). No pierde datos:
       - las recetas existentes pasan a tipo 'ambos'
       - lo que había en el menú pasa a la 'comida' de cada día
-      - los nombres de ingredientes se normalizan
+      - los nombres de ingredientes y las unidades se normalizan
     """
     conn.execute("BEGIN")
 
@@ -121,6 +117,8 @@ def _migrate_to_v2(conn):
 
     menu_cols = {r["name"] for r in conn.execute("PRAGMA table_info(menu)")}
     if menu_cols and "meal" not in menu_cols:
+        # SQLite no puede cambiar la clave primaria: se renombra, se crea la
+        # tabla nueva y se copian las filas.
         conn.execute("ALTER TABLE menu RENAME TO menu_old")
         conn.execute(_menu_sql())
         conn.execute(
@@ -146,8 +144,12 @@ def _migrate_to_v2(conn):
     conn.commit()
 
 
+# La versión 3 solo añade la tabla shopping_checked: no hace falta migrar datos,
+# la crea _schema_sql() con IF NOT EXISTS.
+
+
 def create_tables():
-    """Crea todas las tablas (o actualiza las antiguas). Idempotente."""
+    """Crea las tablas (o actualiza las antiguas). Se puede llamar cuantas veces se quiera."""
     with connection() as conn:
         # WAL: más robusto ante cortes de luz y permite leer mientras se escribe.
         conn.execute("PRAGMA journal_mode = WAL")
@@ -157,57 +159,18 @@ def create_tables():
         ).fetchone()
         version = conn.execute("PRAGMA user_version").fetchone()[0]
 
-        if has_recipes and version < SCHEMA_VERSION:
+        if has_recipes and version < 2:
             _migrate_to_v2(conn)
 
         conn.executescript(_schema_sql())
+
+        # Una fila por cada día y comida (los 7 días), para poder activar más
+        # días con MENU_DAYS sin tocar la base de datos.
         conn.executemany(
             "INSERT OR IGNORE INTO menu (day, meal, recipe_id) VALUES (?, ?, NULL)",
-            [(d, m) for d in DAYS for m in MEALS],
+            [(d, m) for d in ALL_DAYS for m in MEALS],
         )
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-
-
-# ---------------------------------------------------------
-# LECTURA DE TODAS LAS TABLAS
-# ---------------------------------------------------------
-
-def read_recipes():
-    """Todas las filas de la tabla recipes."""
-    with connection() as conn:
-        rows = conn.execute("SELECT id, name, type FROM recipes ORDER BY id").fetchall()
-    return [dict(r) for r in rows]
-
-
-def read_ingredients():
-    """Todas las filas de la tabla ingredients."""
-    with connection() as conn:
-        rows = conn.execute(
-            "SELECT id, recipe_id, position, name, qty, unit "
-            "FROM ingredients ORDER BY recipe_id, position, id"
-        ).fetchall()
-    return [dict(r) for r in rows]
-
-
-def read_menu():
-    """Todas las filas de la tabla menu (en el orden de la semana: comida y cena)."""
-    with connection() as conn:
-        rows = conn.execute("SELECT day, meal, recipe_id FROM menu").fetchall()
-    by_slot = {(r["day"], r["meal"]): r["recipe_id"] for r in rows}
-    return [
-        {"day": d, "meal": m, "recipe_id": by_slot.get((d, m))}
-        for d in DAYS
-        for m in MEALS
-    ]
-
-
-def read_all():
-    """Contenido completo de la base de datos, tabla por tabla."""
-    return {
-        "recipes": read_recipes(),
-        "ingredients": read_ingredients(),
-        "menu": read_menu(),
-    }
 
 
 # ---------------------------------------------------------
@@ -218,6 +181,5 @@ if __name__ == "__main__":
     create_tables()
     data = read_all()
     print(f"✔ Base de datos lista en: {DB_PATH}")
-    print(f"  recipes:     {len(data['recipes'])} filas")
-    print(f"  ingredients: {len(data['ingredients'])} filas")
-    print(f"  menu:        {len(data['menu'])} filas")
+    for table, rows in data.items():
+        print(f"  {table + ':':18} {len(rows)} filas")
