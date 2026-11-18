@@ -1,3 +1,4 @@
+let shoppingSaving = false;
 let shoppingItems = []; // lista actual (para saber qué ingrediente es cada casilla)
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -39,30 +40,37 @@ async function loadShoppingList() {
         }
 
         shoppingItems = shopping;
-        container.innerHTML = shopping.map((item, index) => `
-            <label class="shopping-item${item.checked ? " checked" : ""}">
-                <input type="checkbox" data-index="${index}"${item.checked ? " checked" : ""}>
-                <div class="shopping-info">
-                    <strong>${escapeHtml(item.name)}</strong>
-                    <span>${escapeHtml(shoppingQuantity(item))}</span>
-                </div>
-            </label>
-        `).join("");
+        renderShoppingList();
     } catch {
         container.innerHTML = "<p>Error al cargar.</p>";
     }
 }
 
+function renderShoppingList() {
+    const container = document.getElementById("shoppingList");
+    const row = (item, index) => `
+        <label class="shopping-item${item.checked ? " checked" : ""}">
+            <input type="checkbox" data-index="${index}"${item.checked ? " checked" : ""}>
+            <div class="shopping-info"><strong>${escapeHtml(item.name)}</strong>
+            <span>${escapeHtml(shoppingQuantity(item))}</span></div>
+        </label>`;
+    const group = checked => shoppingItems.map((item, index) => item.checked === checked ? row(item, index) : "").join("");
+    container.innerHTML = group(false) + (shoppingItems.some(i => i.checked) ?
+        '<h2 class="purchased-divider">Ya comprados</h2>' + group(true) : "");
+}
+
 // Marcar / desmarcar un ingrediente: se guarda en la base de datos
 async function onToggleItem(e) {
     const box = e.target.closest('input[type="checkbox"]');
-    if (!box) return;
+    if (!box || shoppingSaving) return;
 
     const item = shoppingItems[Number(box.dataset.index)];
     if (!item) return;
 
     const row = box.closest(".shopping-item");
     const checked = box.checked;
+    shoppingSaving = true;
+    document.querySelectorAll(".shopping-item input").forEach(input => input.disabled = true);
     row.classList.toggle("checked", checked);
 
     try {
@@ -71,12 +79,18 @@ async function onToggleItem(e) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name: item.name, unit: item.unit, checked })
         });
-        item.checked = checked;
+        shoppingItems.forEach(i => { if (i.name === item.name && i.unit === item.unit) i.checked = checked; });
+        // Reordena al terminar la petición y después del gesto sobre la casilla.
+        renderShoppingList();
     } catch (err) {
         // Si no se pudo guardar, la casilla vuelve a como estaba
+        box.disabled = false;
         box.checked = !checked;
         row.classList.toggle("checked", !checked);
         alert("No se pudo guardar: " + err.message);
+    } finally {
+        shoppingSaving = false;
+        document.querySelectorAll(".shopping-item input").forEach(input => input.disabled = false);
     }
 }
 
