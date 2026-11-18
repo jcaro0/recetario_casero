@@ -17,3 +17,5 @@ redis-data
 auth*.json
 backups/
 data/
+
+tests/results/
