@@ -16,7 +16,8 @@ FRONTEND_FOLDER = os.environ.get(
 
 app = Flask(__name__, static_folder=FRONTEND_FOLDER, static_url_path="")
 
-# La base de datos se crea sola en la primera consulta (ver database.py).
+from security import install
+install(app)
 
 
 # ---------------------------------------------------------
@@ -314,4 +315,5 @@ def api_delete_recipe(recipe_id):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
+    db._ensure_ready()  # falla antes de escuchar si falta la base o requiere migración
     app.run(host="0.0.0.0", port=port, debug=debug_mode)

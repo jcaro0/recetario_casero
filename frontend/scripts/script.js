@@ -68,6 +68,20 @@ function escapeHtml(value) {
 
 // fetch + JSON que lanza un Error con el mensaje del servidor si la respuesta no es OK
 async function api(url, options) {
+    options = {...options};
+    const method = (options.method || "GET").toUpperCase();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+        const statusResponse = await fetch("/auth/status", {cache: "no-store"});
+        if (!statusResponse.ok) throw new Error("No se pudo comprobar la sesión");
+        const status = await statusResponse.json();
+        if (status.enabled && !status.authenticated) {
+            throw new Error("Abre /login.html en otra pestaña, inicia sesión y vuelve a guardar aquí");
+        }
+        const headers = new Headers(options.headers);
+        headers.set("X-Recetario-Request", "1");
+        if (status.csrf) headers.set("X-CSRF-Token", status.csrf);
+        options.headers = headers;
+    }
     const res = await fetch(url, options);
     let data = null;
     try {
