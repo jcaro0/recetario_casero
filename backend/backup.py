@@ -65,9 +65,9 @@ def backup(source, directory, label='manual', retain=None):
             os.close(fd)
     finally:
         partial.unlink(missing_ok=True)
-    # Solo las copias manuales/diarias participan en retención; las de migración
+    # Solo las copias manuales y programadas participan en retención; las de migración
     # y prerrestauración se conservan hasta revisión manual.
-    if retain is not None and label in ('manual', 'daily'):
+    if retain is not None and label in ('manual', 'daily', 'weekly'):
         keep = max(1, int(retain))
         valid = []
         for candidate in directory.glob(f'{prefix}*.sqlite3'):

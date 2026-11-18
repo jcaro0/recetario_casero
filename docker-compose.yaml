@@ -10,7 +10,7 @@ services:
       FRONTEND_FOLDER: /app/frontend
       PORT: "8000"
       BACKUP_DIR: /backups
-      BACKUP_RETAIN: "${BACKUP_RETAIN:-14}"
+      BACKUP_RETAIN: "${BACKUP_RETAIN:-2}"
       # Para activar autenticación, sigue README.md y descomenta:
       # AUTH_CONFIG: /config/auth.json
       # Días del menú (por defecto lunes a viernes). Ejemplo con la semana completa:

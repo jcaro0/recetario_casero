@@ -15,8 +15,8 @@ def main():
     for name in ('info', 'init', 'migrate'):
         sub.add_parser(name)
     b = sub.add_parser('backup')
-    b.add_argument('--retain', type=int, default=int(os.environ.get('BACKUP_RETAIN', '14')))
-    b.add_argument('--label', choices=['manual', 'daily'], default='manual')
+    b.add_argument('--retain', type=int, default=int(os.environ.get('BACKUP_RETAIN', '2')))
+    b.add_argument('--label', choices=['manual', 'daily', 'weekly'], default='manual')
     r = sub.add_parser('restore', description='Pierdes las recetas posteriores a la copia. Detén primero la aplicación.')
     r.add_argument('source')
     r.add_argument('--writers-stopped', action='store_true')

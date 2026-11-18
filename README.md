@@ -135,6 +135,8 @@ los tuyos** en archivos de configuración, servicios y comandos.
    set -a
    . /home/pi/.config/recetario/recetario.env
    set +a
+   # SOLO si esta instalación empieza de cero, sin base ni datos anteriores:
+   # .venv/bin/python backend/manage.py init
    .venv/bin/python backend/manage.py info
    .venv/bin/python backend/manage.py migrate
    .venv/bin/python backend/manage.py info
@@ -166,7 +168,7 @@ los tuyos** en archivos de configuración, servicios y comandos.
    si lo usas. Las dependencias solo se instalan con `./script.sh install`:
    los siguientes arranques no ejecutan pip. Si cambia requirements, vuelve a instalar.
 
-## Copias manuales y diarias
+## Copias semanales: conservar las dos últimas
 
 ```sh
 # Raspberry, configuración cargada como arriba:
@@ -183,16 +185,42 @@ se publican después de sincronizar el archivo y el directorio. Los nombres cont
 fecha/hora UTC, identificador de origen y sufijo aleatorio. Se puede respaldar mientras
 se usa la aplicación; una copia no contiene las escrituras posteriores a su snapshot.
 
-`BACKUP_RETAIN=14` conserva las últimas 14 copias válidas **de cada origen y clase**
-(manual/diaria). También puedes pasar `--retain 7`. Cero o valores negativos conservan
+`BACKUP_RETAIN=2` conserva las últimas 2 copias válidas **de cada origen y clase**
+(manual/semanal; también se mantiene compatibilidad con la clase diaria). También puedes pasar `--retain 7`. Cero o valores negativos conservan
 al menos una válida. Las copias dañadas no cuentan como válidas y no se borran
 silenciosamente. Las copias de antes de migrar o restaurar no se purgan automáticamente:
 revísalas manualmente cuando ya hayas validado el cambio. Vigila el espacio libre.
 Una copia en la misma tarjeta SD no protege frente a su avería: copia periódicamente
 los respaldos verificados a otro dispositivo.
 
-**Raspberry con systemd (preferido):** adapta usuario/rutas en los dos archivos de
-backup, que deben usar el mismo `EnvironmentFile` que la aplicación:
+**Raspberry con cron (opción recomendada para esta instalación):**
+
+1. En el archivo externo `recetario.env`, deja `BACKUP_RETAIN=2`. Comprueba que
+   `DB_PATH` apunta a tu base activa y `BACKUP_DIR` a una carpeta permanente externa.
+2. Ejecuta manualmente `/home/pi/recetario/deploy/backup-weekly.sh` y comprueba la
+   ruta de la copia generada. Funciona desde cualquier directorio y carga el mismo
+   archivo de configuración que la aplicación. Puedes cambiarlo con `RECETARIO_ENV`.
+3. Comprueba que cron está instalado y activo (`systemctl status cron`). En Raspberry
+   Pi OS, si falta: `sudo apt-get install cron` y `sudo systemctl enable --now cron`.
+4. Como propietario de Recetario, abre `crontab -e` y añade esta línea, sustituyendo
+   usuario y rutas (también disponible en `deploy/recetario.crontab.example`):
+
+```cron
+0 3 * * 0 /home/pi/recetario/deploy/backup-weekly.sh >> /home/pi/.local/share/recetario-backup.log 2>&1
+```
+
+Se ejecuta cada **domingo a las 03:00, hora local de la Raspberry**. Confirma la zona
+horaria con `timedatectl`. Revisa `crontab -l` y el log tras la primera ejecución.
+Cron no recupera ejecuciones perdidas si la Pi está apagada en ese momento.
+
+En la tercera copia semanal válida se elimina la semanal más antigua; quedan las
+**dos últimas válidas**. Si falla la nueva copia, no se purgan las anteriores.
+Las copias manuales y de antes de migrar/restaurar se gestionan por separado, por
+lo que pueden existir más de dos archivos en la carpeta. No son bases activas.
+Una copia semanal permite perder hasta una semana de cambios si falla la SD.
+
+**Alternativa systemd (no activar junto a cron):** adapta usuario/rutas en los dos
+archivos de backup y usa el mismo `EnvironmentFile` que la aplicación:
 
 ```sh
 sudo cp deploy/recetario-backup.service deploy/recetario-backup.timer /etc/systemd/system/
@@ -200,27 +228,21 @@ sudo systemctl daemon-reload
 sudo systemctl start recetario-backup.service
 journalctl -u recetario-backup.service -n 30 --no-pager
 sudo systemctl enable --now recetario-backup.timer
-systemctl list-timers recetario-backup.timer
 ```
 
-Se ejecuta diariamente hacia las 03:00, con pequeño retraso aleatorio. Si la máquina
-estaba apagada, `Persistent=true` recupera la ejecución pendiente al activarse el timer.
-No queda ningún proceso Python de copias residente.
+También está configurado para los domingos hacia las 03:00. `Persistent=true`
+recupera una ejecución pendiente si estaba apagada. Para pasar de un timer anterior
+a cron, primero ejecuta `sudo systemctl disable --now recetario-backup.timer`.
+No queda ningún proceso Python de copias residente en ninguna de las dos opciones.
 
-**Alternativa cron (no actives ambos):** `crontab -e` como el usuario de Recetario;
-sustituye rutas y añade una línea:
+En el ordenador puedes programar una copia semanal con cron (Docker debe estar activo
+ y Compose debe leer tu `.env` con `RECETARIO_BACKUP_DIR`):
 
 ```cron
-0 3 * * * /bin/sh -c 'set -a; . /home/pi/.config/recetario/recetario.env; set +a; /home/pi/recetario/.venv/bin/python /home/pi/recetario/backend/manage.py backup --label daily' >> /home/pi/.local/share/recetario-backup.log 2>&1
+0 3 * * 0 cd /RUTA/AL/recetario && /usr/bin/docker compose exec -T backend python manage.py backup --label weekly --retain 2 >> /RUTA/EXTERNA/backup-docker.log 2>&1
 ```
 
-Cron no recupera ejecuciones perdidas cuando está apagada. Revisa el log y sus errores.
-En el ordenador puedes programar el siguiente comando con cron (Docker debe estar activo;
-Compose debe leer tu `.env` con `RECETARIO_BACKUP_DIR`):
-
-```cron
-0 3 * * * cd /RUTA/AL/recetario && /usr/bin/docker compose exec -T backend python manage.py backup --label daily >> /RUTA/EXTERNA/backup-docker.log 2>&1
-```
+Referencia: [formato de crontab en Debian](https://manpages.debian.org/bookworm/cron/crontab.5.en.html).
 
 ## Restauración: solo por decisión explícita
 
@@ -325,37 +347,24 @@ porque sobre HTTP impediría enviar la cookie. No se añade infraestructura exte
 ni TLS automáticamente. Una autenticación de aplicación no protege frente a acceso
 físico, robo de la SD o acceso al sistema operativo y sus archivos.
 
-## Git: retirada segura del seguimiento (pendiente coordinada)
+## Git: datos fuera del seguimiento
 
-`backend/data/recetario.db` sigue rastreada en el índice actual. `.gitignore` y
-`.dockerignore` ya impiden añadir nuevas bases e incluirlas en imágenes, pero
-`.gitignore` **no deja de rastrear un archivo que ya estaba versionado**.
+`backend/data/recetario.db` se ha retirado del seguimiento con `git rm --cached`,
+**conservando físicamente la base local**. Antes se creó una copia consistente y
+verificada fuera del repositorio, en `/home/jaime/.local/share/recetario-docker-backups`.
+La Raspberry se instalará de cero: no necesita recibir la base del ordenador.
+`.gitignore` excluye las bases y sus auxiliares; `.dockerignore` evita incluirlos en imágenes.
 
-Se deja la retirada pendiente hasta proteger la Raspberry: al recibir un commit que
-elimina un archivo versionado, Git puede borrar ese archivo en otros clones. No se
-ha accedido a la Pi ni se puede afirmar que ya tenga una copia externa. Tampoco se
-ha reescrito el historial. Los cambios se han organizado en commits locales, sin push.
+Un clon nuevo ya no trae una base antigua. En una instalación nueva configura
+`DB_PATH` externo y ejecuta `manage.py init` una sola vez, sin copiar datos desde Git.
+Docker sigue utilizando la base local existente mediante su montaje persistente.
 
-Antes de retirar el archivo:
-
-1. Protege la base del ordenador con `manage.py backup` en una carpeta permanente.
-   La copia realizada durante este trabajo en `/tmp/recetario-safety-backups` es
-   provisional: **no basta como única copia permanente**.
-2. Completa el primer despliegue seguro de abajo en la Pi y cualquier otro clon
-   que tenga datos reales. Verifica que usan sus propias bases, sin sobrescribirlas.
-3. Solo entonces, en el ordenador:
-
-   ```sh
-   git rm --cached -- backend/data/recetario.db
-   test -f backend/data/recetario.db
-   git status --short
-   ```
-
-   `--cached` conserva el archivo físico. Revisa los cambios y confirma tú mismo
-   cuando corresponda, junto con las protecciones y documentación. No uses `git rm`
-   sin `--cached`, `git clean`, `reset --hard` o `checkout` sobre datos.
-4. No se borra del historial antiguo. Un clon de una revisión antigua puede seguir
-   trayendo recetas antiguas: no las despliegues encima de una instalación real.
+**Otros clones existentes con datos reales:** antes de recibir este cambio, sigue el
+procedimiento de protección al final de esta guía. Git puede eliminar el archivo que
+antes estaba versionado al aplicar su retirada. No hagas pull antes de respaldarlo y
+configurar una base externa verificada. No uses `git clean`, `reset --hard` o
+`checkout` sobre datos. No se ha reescrito el historial: revisiones antiguas aún
+pueden contener la antigua base y no deben desplegarse sobre datos actuales.
 
 ## Si después de actualizar parecen faltar recetas
 
@@ -387,7 +396,16 @@ Referencias técnicas: [API de backup SQLite](https://sqlite.org/backup.html),
 
 ## PROCEDIMIENTO SEGURO PARA ACTUALIZAR MI RASPBERRY PI
 
-### Primer despliegue seguro: antes del primer `git pull`
+### Instalación nueva de esta Raspberry (sin datos anteriores)
+
+Sigue la sección «Raspberry Pi Zero W: Python sin Docker»: instala dependencias,
+crea el archivo externo `recetario.env` y carga sus variables. Ejecuta entonces
+`.venv/bin/python backend/manage.py init` **una sola vez**. Instala el servicio
+del puerto 80 y programa el cron semanal según la sección de copias. No transfieras
+la base del ordenador. Desde entonces utiliza el procedimiento de actualizaciones
+posteriores; no vuelvas a ejecutar `init`.
+
+### Solo instalaciones existentes: antes del primer `git pull`
 
 1. **Identifica la base activa** usando el proceso/configuración y las rutas de la
    tabla inicial. Anota recetas recientes reconocibles, IDs y número de recetas.
@@ -431,7 +449,7 @@ Referencias técnicas: [API de backup SQLite](https://sqlite.org/backup.html),
    detenido. Si falla, mantén el servicio parado; no uses `init` ni una restauración automática.
 8. Instala/arranca el servicio sin root, comprueba su log y su `DB_PATH`. Desde otro
    dispositivo revisa las recetas más recientes y sus detalles, así como el menú.
-   Solo entonces vuelve a permitir uso normal y activa el timer de copias.
+   Solo entonces vuelve a permitir uso normal y programa cron (o el timer alternativo).
 
 ### Actualizaciones posteriores
 
@@ -457,7 +475,7 @@ Referencias técnicas: [API de backup SQLite](https://sqlite.org/backup.html),
    copia adicional si hace falta migrar. Luego repite `manage.py info`.
 5. Arranca `sudo systemctl start recetario`, revisa `journalctl -u recetario -n 40`
    y comprueba desde el móvil las últimas recetas, notas y planificación.
-6. Comprueba el timer y su último respaldo. Si algo falla, conserva los datos y
+6. Comprueba cron (o el timer si lo elegiste) y su último respaldo. Si algo falla, conserva los datos y
    las copias, mantén parado el servicio si hay dudas y revisa configuración/esquema.
    Volver a un código antiguo puede ser incompatible con el esquema nuevo:
    **no restaures una base antigua para que arranque**.

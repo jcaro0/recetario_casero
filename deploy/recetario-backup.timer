@@ -1,7 +1,7 @@
 [Unit]
-Description=Copia diaria de Recetario
+Description=Copia semanal de Recetario
 [Timer]
-OnCalendar=*-*-* 03:00:00
+OnCalendar=Sun *-*-* 03:00:00
 Persistent=true
 RandomizedDelaySec=15m
 [Install]

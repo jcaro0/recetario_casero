@@ -55,3 +55,7 @@ No instala dependencias ni usa el puerto 80 o los datos del proyecto.
 
 No se han ejecutado pruebas de despliegue contra la Raspberry ni contra el volumen
 Docker real. Consulta README.md antes de actualizar cualquiera de esas instalaciones.
+
+La copia semanal mediante `deploy/backup-weekly.sh` se prueba desde otro directorio,
+con un archivo de configuración temporal. Tras tres ejecuciones quedan las dos
+últimas copias válidas; si falta la base activa no se purgan los respaldos existentes.

@@ -1,0 +1,3 @@
+# Instalar con crontab -e como propietario de Recetario; sustituir usuario/rutas.
+# Domingo, 03:00, hora local de la Raspberry. No activar también el timer systemd.
+0 3 * * 0 /home/pi/recetario/deploy/backup-weekly.sh >> /home/pi/.local/share/recetario-backup.log 2>&1

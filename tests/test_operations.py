@@ -1,6 +1,7 @@
 """Seguridad y operaciones: cada base vive en TemporaryDirectory."""
 import json
 import os
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -144,6 +145,38 @@ class OperationsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             backup.backup(db.DB_PATH, root / 'unsafe-backups')
         self.assertFalse((root / 'unsafe-backups').exists())
+
+    def test_weekly_cron_script_keeps_latest_two_and_preserves_on_failure(self):
+        repo = Path(__file__).resolve().parents[1]
+        venv = self.root / 'venv'
+        (venv / 'bin').mkdir(parents=True)
+        interpreter = venv / 'bin/python'
+        interpreter.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' "$@"\n')
+        interpreter.chmod(0o700)
+        config = self.root / 'recetario.env'
+        directory = self.root / 'weekly-backups'
+        config.write_text('\n'.join(f'{key}={shlex.quote(str(value))}' for key, value in {
+            'DB_PATH': db.DB_PATH, 'BACKUP_DIR': directory,
+            'BACKUP_RETAIN': 2, 'VENV_DIR': venv}.items()) + '\n')
+        env = dict(os.environ, RECETARIO_ENV=str(config))
+        command = ['sh', str(repo / 'deploy/backup-weekly.sh')]
+        for index in range(3):
+            with db.connection() as conn:
+                conn.execute('UPDATE recipes SET notes=?', (str(index),))
+            result = subprocess.run(command, cwd='/tmp', env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        files = sorted(directory.glob('recetario-weekly-*.sqlite3'))
+        self.assertEqual(len(files), 2)
+        notes = []
+        for saved in files:
+            with closing(backup.connect_existing(saved, True)) as conn:
+                notes.append(conn.execute('SELECT notes FROM recipes').fetchone()[0])
+        self.assertEqual(notes, ['1', '2'])
+        config.write_text(config.read_text().replace(db.DB_PATH, str(self.root / 'absent.db')))
+        result = subprocess.run(command, cwd='/tmp', env=env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(sorted(directory.glob('recetario-weekly-*.sqlite3')), files)
+        self.assertIn('0 3 * * 0 ', (repo / 'deploy/recetario.crontab.example').read_text())
 
     def test_cli_info_is_read_only_and_requires_explicit_path(self):
         script = Path(__file__).resolve().parents[1] / 'backend/manage.py'

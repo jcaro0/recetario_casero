@@ -27,7 +27,7 @@ Hay comandos para consultar la base activa, hacer copias consistentes con SQLite
 y restaurar una copia por decisión explícita. Los respaldos se verifican, tienen nombres
 únicos y una retención configurable que conserva al menos una copia válida. Antes de
 restaurar se respalda el estado actual. La aplicación no restaura copias por sí sola.
-Se incluyen opciones de programación diaria sin un proceso Python permanente.
+Se incluye cron semanal con retención de las dos últimas copias válidas, sin un proceso Python permanente.
 
 ## Desarrollo y Raspberry Pi
 
@@ -62,9 +62,10 @@ Los detalles y comandos están en [tests/README.md](tests/README.md).
 - No se han migrado, borrado ni restaurado las bases reales durante este trabajo.
 - No se ha accedido a la Raspberry ni comprobado allí el despliegue.
 - Hay que configurar rutas externas permanentes de copias, el servicio de la Pi,
-  la programación diaria y, si se desea, la autenticación.
-- La base ya versionada sigue en Git: ignorar nuevas bases no retira las existentes.
-  Su retirada queda pendiente hasta proteger los datos de todos los clones afectados.
+  la programación semanal y, si se desea, la autenticación.
+- La base se ha retirado del seguimiento de Git tras crear una copia externa verificada.
+  El archivo local se conserva; la Raspberry nueva inicializará su propia base.
+  Otros clones con datos deben protegerlos antes de recibir la retirada.
 - Los cambios se han organizado en commits locales. No se ha hecho push.
 
 Antes del primer despliegue, sigue en orden el **PROCEDIMIENTO SEGURO PARA ACTUALIZAR

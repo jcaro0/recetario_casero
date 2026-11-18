@@ -1,10 +1,10 @@
 [Unit]
-Description=Copia diaria verificada de Recetario
+Description=Copia semanal verificada de Recetario
 
 [Service]
 Type=oneshot
 User=pi
 EnvironmentFile=/home/pi/.config/recetario/recetario.env
-ExecStart=/home/pi/recetario/.venv/bin/python /home/pi/recetario/backend/manage.py backup --label daily
+ExecStart=/home/pi/recetario/.venv/bin/python /home/pi/recetario/backend/manage.py backup --label weekly
 UMask=0077
 NoNewPrivileges=true
