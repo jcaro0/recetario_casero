@@ -6,14 +6,15 @@ se ejecutan explícitamente con manage.py, nunca desde una petición HTTP.
 
 import os
 import json
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 import sqlite3
 import threading
 from contextlib import contextmanager
 
 from normalize import (
     collapse_spaces,
-    normalize_ingredient_name,
+    ingredient_key,
+    parse_quantity,
     normalize_unit,
     strip_accents,
 )
@@ -229,7 +230,7 @@ def _group_recipes(recipe_rows, ingredient_rows):
 def _write_ingredients(conn, recipe_id, ingredients):
     rows = []
     for ing in ingredients:
-        name = normalize_ingredient_name(ing["name"])
+        name = collapse_spaces(ing["name"])
         if name:
             qty = ing.get("qty")
             unit = normalize_unit(ing.get("unit"))
@@ -317,7 +318,7 @@ def find_duplicate_recipe(ingredients):
     Se comparan nombres normalizados, sin importar el orden ni las cantidades.
     Devuelve {"id", "name"} de la primera coincidencia, o None.
     """
-    wanted = {normalize_ingredient_name(i.get("name")) for i in ingredients}
+    wanted = {ingredient_key(i.get("name")) for i in ingredients}
     wanted.discard("")
     if not wanted:  # sin ingredientes no hay nada con lo que comparar
         return None
@@ -332,7 +333,7 @@ def find_duplicate_recipe(ingredients):
     stored = {}
     for row in rows:
         entry = stored.setdefault(row["id"], {"id": row["id"], "name": row["name"], "set": set()})
-        entry["set"].add(normalize_ingredient_name(row["ingredient"]))
+        entry["set"].add(ingredient_key(row["ingredient"]))
 
     for entry in stored.values():
         if entry["set"] == wanted:
@@ -469,6 +470,9 @@ def shopping_unit(unit):
         "gramos": ("g", 1), "gr": ("g", 1), "gramo": ("g", 1),
         "l": ("ml", 1000), "litro": ("ml", 1000), "litros": ("ml", 1000),
         "mililitro": ("ml", 1), "mililitros": ("ml", 1),
+        "cucharada": ("cda", 1), "cucharadas": ("cda", 1),
+        "cucharadita": ("cdta", 1), "cucharaditas": ("cdta", 1),
+        "tazas": ("taza", 1),
         "ud": ("uds", 1), "unidad": ("uds", 1), "unidades": ("uds", 1),
     }
     canonical, factor = aliases.get(unit, (unit, 1))
@@ -481,8 +485,7 @@ def get_shopping_list():
 
     - Se agrupa por nombre normalizado + unidad (1 Cebolla + 0.5 Cebolla = 1.5 Cebolla).
     - Sin unidad equivale a "uds" (así "1 cebolla" y "0.5 uds de cebolla" se suman).
-    - Un ingrediente sin cantidad (p. ej. "Sal") sale una sola vez, y solo si no
-      aparece ya con cantidad en otra receta.
+    - Las cantidades desconocidas y textuales se conservan junto a las numéricas.
     - Una receta repetida en varios huecos cuenta tantas veces como aparezca.
     - Cada elemento lleva "checked": si ya está comprado / en casa (se guarda en la BD).
     """
@@ -501,59 +504,51 @@ def get_shopping_list():
         }
 
     totals = {}
-    without_qty = set()
+    unknown = set()
     text_quantities = set()
-
     for r in rows:
-        name = normalize_ingredient_name(r["name"])
+        name = ingredient_key(r["name"])
         if not name:
             continue
-
-        if r["qty"] is None:
-            without_qty.add(name)
+        raw_unit = normalize_unit(r["unit"])
+        qty = parse_quantity(r["qty"])
+        if qty is None:
+            # Conserva también la ausencia de cantidad aunque haya otra numérica.
+            unit = shopping_unit(raw_unit)[0] if raw_unit else None
+            if r["qty"] is None:
+                unknown.add((name, unit))
+            else:
+                text_quantities.add((name, str(r["qty"]), unit))
             continue
-
-        unit = normalize_unit(r["unit"]) or "uds"
-        try:
-            qty = Decimal(str(r["qty"]))
-            if not qty.is_finite():
-                raise InvalidOperation
-        except InvalidOperation:
-            text_quantities.add((name, str(r["qty"]), r["unit"]))
-            continue
-        unit, multiplier = shopping_unit(unit)
+        unit, multiplier = shopping_unit(raw_unit or "uds")
         qty *= multiplier * Decimal(r["people"] or r["servings"]) / Decimal(r["servings"])
         totals[(name, unit)] = totals.get((name, unit), Decimal(0)) + qty
 
-    items = [
-        {"name": name, "unit": unit, "qty": _clean_qty(float(round(qty, 3)))}
-        for (name, unit), qty in totals.items()
-    ]
-
-    items += [{"name": name, "qty": qty, "unit": unit}
-              for name, qty, unit in sorted(text_quantities, key=lambda x: (x[0], x[1], x[2] or ""))]
-    names_with_qty = {name for name, _ in totals} | {name for name, _, _ in text_quantities}
-    items += [
-        {"name": name, "unit": None, "qty": None}
-        for name in without_qty
-        if name not in names_with_qty
-    ]
-
-    items.sort(key=lambda item: (item["name"], item["unit"] or ""))
+    items = [{"name": name, "unit": unit, "qty": _clean_qty(float(round(qty, 6)))}
+             for (name, unit), qty in totals.items()]
+    items += [{"name": name, "qty": qty, "unit": unit} for name, qty, unit in text_quantities]
+    items += [{"name": name, "qty": None, "unit": unit} for name, unit in unknown]
+    items.sort(key=lambda item: (item["name"], item["unit"] or "", str(item["qty"])))
+    # Lee claves antiguas sin reescribir recetas ni marcas. Solo unidades compatibles.
+    checked_keys = {(ingredient_key(name), shopping_unit(normalize_unit(unit))[0] or "")
+                    for name, unit in checked}
     for item in items:
-        # En la tabla la "sin unidad" se guarda como '' (así sirve de clave primaria)
-        item["checked"] = (item["name"], item["unit"] or "") in checked
+        item["checked"] = (item["name"], item["unit"] or "") in checked_keys
     return items
 
 
 def set_shopping_checked(name, unit, checked):
     """Marca o desmarca un ingrediente de la lista de la compra."""
-    key_name = normalize_ingredient_name(name)
-    key_unit = normalize_unit(unit) or ""
+    key_name = ingredient_key(name)
+    key_unit = shopping_unit(normalize_unit(unit))[0] or ""
     if not key_name:
         raise ValueError("Ingrediente no válido")
 
     with connection() as conn:
+        # Desmarca también alias heredados para que no reaparezcan al recargar.
+        for row in conn.execute("SELECT name, unit FROM shopping_checked").fetchall():
+            if (ingredient_key(row["name"]), shopping_unit(normalize_unit(row["unit"]))[0] or "") == (key_name, key_unit):
+                conn.execute("DELETE FROM shopping_checked WHERE name=? AND unit=?", (row["name"], row["unit"]))
         if checked:
             conn.execute(
                 "INSERT OR IGNORE INTO shopping_checked (name, unit) VALUES (?, ?)",

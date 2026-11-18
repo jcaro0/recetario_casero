@@ -5,7 +5,7 @@ import random
 from flask import Flask, request, jsonify
 
 import database as db
-from normalize import collapse_spaces
+from normalize import collapse_spaces, parse_quantity
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -18,6 +18,16 @@ app = Flask(__name__, static_folder=FRONTEND_FOLDER, static_url_path="")
 
 from security import install
 install(app)
+
+@app.before_request
+def validate_json_object():
+    if request.is_json and not isinstance(request.get_json(silent=True), dict):
+        return jsonify(error="Se esperaba un objeto JSON válido"), 400
+
+
+@app.errorhandler(ValueError)
+def invalid_data(error):
+    return jsonify(error=str(error)), 400
 
 
 # ---------------------------------------------------------
@@ -219,15 +229,14 @@ def api_shopping_check():
 # ---------------------------------------------------------
 
 def clean_ingredients(raw):
-    """Valida la lista de ingredientes que llega del frontend (la normalización
-    de nombres y unidades se hace después, en database.create_recipe)."""
+    """Valida cantidades y estructura; conserva los nombres legibles."""
     if not isinstance(raw, list):
-        return []
+        raise ValueError("Los ingredientes deben ser una lista")
 
     cleaned = []
     for ing in raw:
-        if not isinstance(ing, dict):
-            continue
+        if not isinstance(ing, dict) or not isinstance(ing.get("name"), str):
+            raise ValueError("Cada ingrediente debe tener un nombre de texto")
 
         name = collapse_spaces(ing.get("name"))
         if not name:
@@ -236,15 +245,23 @@ def clean_ingredients(raw):
         qty = ing.get("qty")
         if qty in (None, ""):
             qty = None
+        elif isinstance(qty, (dict, list, bool)):
+            raise ValueError("La cantidad debe ser un número o texto")
         else:
-            try:
-                qty = float(qty)
-            except (TypeError, ValueError):
-                # Texto libre: se conserva, pero nunca se escala en la compra.
-                qty = str(ing.get("qty")).strip()
+            parsed = parse_quantity(qty)
+            if parsed is not None:
+                qty = float(parsed)
+                if not math.isfinite(qty):
+                    raise ValueError("Cantidad fuera de rango")
             else:
-                if not math.isfinite(qty) or qty < 0:
-                    qty = None
+                try:
+                    float(str(qty).replace(",", "."))
+                except (ValueError, TypeError):
+                    qty = str(qty).strip()
+                else:
+                    raise ValueError("La cantidad debe ser finita y positiva o cero")
+        if ing.get("unit") is not None and not isinstance(ing["unit"], str):
+            raise ValueError("La unidad debe ser texto")
 
         cleaned.append({"name": name, "qty": qty, "unit": ing.get("unit")})
 
@@ -279,6 +296,8 @@ def positive_integer(value):
 def save_recipe(recipe_id=None):
     data = request.get_json(silent=True) or {}
 
+    if not isinstance(data.get("name"), str):
+        return jsonify(error="El nombre debe ser texto"), 400
     name = collapse_spaces(data.get("name"))
     if not name:
         return jsonify({"error": "El nombre es obligatorio"}), 400

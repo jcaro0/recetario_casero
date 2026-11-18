@@ -170,6 +170,19 @@ class RecipeTests(unittest.TestCase):
         self.client.post('/menu/generate')
         self.assertTrue(all(r['people'] == 5 for meals in self.client.get('/menu').json.values() for r in meals.values()))
 
+    def test_empty_slots_inactive_days_and_unit_boundaries(self):
+        recipe = self.create(ingredients=[{'name':'Leche','qty':'1,5','unit':'l'},
+                                          {'name':'leche','qty':500,'unit':'ml'},
+                                          {'name':'leche','qty':1,'unit':'cucharada'},
+                                          {'name':'leche','qty':1,'unit':'cucharadita'}])
+        db.set_menu_slot('sábado', 'comida', recipe['id'], 100)
+        self.assertEqual(db.get_shopping_list(), [])
+        self.client.post('/menu/people', json={'people': 6})
+        self.assertFalse(any(row['recipe_id'] for row in db.read_menu() if row['day'] != 'sábado'))
+        self.client.post('/menu/lunes/comida', json={'recipe_id':recipe['id']})
+        self.assertEqual(self.quantities(), {('Leche','ml'):6000, ('Leche','cda'):3, ('Leche','cdta'):3})
+        self.assertEqual(db.get_recipe(recipe['id']), recipe)
+
     def test_week_bulk_rolls_back_on_sql_failure(self):
         import sqlite3
         with db.connection() as conn:
@@ -180,6 +193,53 @@ class RecipeTests(unittest.TestCase):
             db.set_week_people(7)
         self.assertEqual(db.read_menu(), before)
         self.assertEqual(db.get_week_people(), 2)
+
+    def test_aliases_fraction_units_and_original_names(self):
+        a = self.create(ingredients=[{'name': 'Tomate', 'qty': '500', 'unit': 'g'},
+                                    {'name': 'Huévos', 'qty': '1 1/2', 'unit': 'unidades'},
+                                    {'name': 'Aceite de oliva', 'qty': '¼', 'unit': 'cucharadas'}])
+        b = self.create(ingredients=[{'name': 'tomates', 'qty': '0,5', 'unit': 'kg'},
+                                    {'name': 'huevo', 'qty': '½', 'unit': 'ud'},
+                                    {'name': ' ACEITE  DE OLIVA ', 'qty': '3/4', 'unit': 'cda'},
+                                    {'name': 'tomate triturado', 'qty': 1, 'unit': 'l'},
+                                    {'name': 'tomate frito', 'qty': 1, 'unit': 'cdta'}])
+        self.plan(a)
+        self.plan(b, meal='cena')
+        quantities = self.quantities()
+        self.assertEqual(quantities[('Tomate', 'g')], 1000)
+        self.assertEqual(quantities[('Huevo', 'uds')], 2)
+        self.assertEqual(quantities[('Aceite de oliva', 'cda')], 1)
+        self.assertEqual(quantities[('Tomate triturado', 'ml')], 1000)
+        self.assertIn(('Tomate frito', 'cdta'), quantities)
+        self.assertEqual(self.client.get(f"/recipes/{a['id']}").json['ingredients'][1]['name'], 'Huévos')
+
+    def test_parse_conservative_unknown_and_marks_compatibility(self):
+        from normalize import parse_quantity, ingredient_key
+        from decimal import Decimal
+        for value, expected in [('1', '1'), ('1,5', '1.5'), ('1.5', '1.5'), ('1/2', '.5'),
+                                ('1 1/2', '1.5'), ('½', '.5'), ('¼', '.25'), ('¾', '.75')]:
+            self.assertEqual(parse_quantity(value), Decimal(expected))
+        for value in ['al gusto', 'una pizca', 'cantidad necesaria', '1/0']:
+            self.assertIsNone(parse_quantity(value))
+        for a, b in [('tomates', 'tomate'), ('dientes de ajo', 'diente de ajo'), ('cebollas', 'cebolla'),
+                     ('patatas', 'patata'), ('pimientos', 'pimiento')]:
+            self.assertEqual(ingredient_key(a), ingredient_key(b))
+        for a, b in [('tomate', 'tomate frito'), ('sal', 'salsa'), ('pimiento', 'pimienta'), ('anis', 'ani')]:
+            self.assertNotEqual(ingredient_key(a), ingredient_key(b))
+        recipe = self.create(ingredients=[{'name': 'Tomates', 'qty': 1, 'unit': 'kg'},
+                                          {'name': 'Tomate', 'qty': None},
+                                          {'name': 'Tomate', 'qty': 'al gusto'},
+                                          {'name': 'Tomate', 'qty': 'una pizca'}])
+        self.plan(recipe)
+        with db.connection() as conn:
+            conn.execute("INSERT INTO shopping_checked VALUES ('Tomates','kg')")
+        items = self.client.get('/shopping-list').json
+        self.assertTrue(next(i for i in items if i['unit'] == 'g')['checked'])
+        self.assertEqual({i['qty'] for i in items}, {1000, None, 'al gusto', 'una pizca'})
+        self.client.post('/shopping-list/check', json={'name':'Tomate', 'unit':'g', 'checked':False})
+        self.assertFalse(next(i for i in self.client.get('/shopping-list').json if i['unit']=='g')['checked'])
+        self.client.post('/shopping-list/check', json={'name':'Tomate', 'unit':'cdta', 'checked':True})
+        self.assertFalse(next(i for i in self.client.get('/shopping-list').json if i['unit']=='g')['checked'])
 
     def test_migrate_v4_with_verified_backup(self):
         recipe = self.create()

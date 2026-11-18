@@ -67,7 +67,7 @@ def _schema_sql():
     -- Ingredientes de cada receta.
     --  * ON DELETE CASCADE: al borrar la receta se borran sus ingredientes.
     --  * position conserva el orden en que se escribieron.
-    --  * name se guarda ya normalizado (Cebolla, Pina...) para poder sumarlos.
+    --  * name conserva el nombre legible; los alias se aplican al calcular compra.
     CREATE TABLE IF NOT EXISTS ingredients (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
         recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,

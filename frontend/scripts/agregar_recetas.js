@@ -45,7 +45,7 @@ function createIngredientRow(ingredient = {}) {
             <option value="g">g — gramos</option><option value="kg">kg — kilos</option>
             <option value="ml">ml — mililitros</option><option value="l">l — litros</option>
             <option value="uds">uds — unidades</option><option value="cda">cda — cucharada</option>
-            <option value="taza">taza — tazas</option>
+            <option value="cdta">cdta — cucharadita</option><option value="taza">taza — tazas</option>
         </select>
         <button type="button" class="deleteIngredient" aria-label="Eliminar ingrediente">✕</button>`;
     const name = div.querySelector(".ingredient-name");
