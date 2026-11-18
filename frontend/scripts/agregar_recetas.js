@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             editingRecipeId = Number(id);
             const recipe = await api(`/recipes/${editingRecipeId}`);
             document.title = "Editar receta";
+            field("recipeForm").querySelector(".submitButton").lastChild.textContent = " Guardar cambios";
             document.querySelector(".recipeHero h1").textContent = "Editar receta";
             document.querySelector(".logo span").textContent = "Editar receta";
             field("typeChangeHint").classList.remove("hidden");
