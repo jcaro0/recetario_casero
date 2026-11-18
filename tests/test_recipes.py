@@ -1,0 +1,175 @@
+"""Regresiones de API, migraciones y compra; usa exclusivamente bases temporales.
+
+    PYTHONPATH=backend python3 -m unittest discover -s tests -v
+"""
+import os
+from contextlib import closing
+import sqlite3
+import tempfile
+import unittest
+
+import database as db
+from main import app
+
+
+class RecipeTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.old_path = db.DB_PATH
+        db.DB_PATH = os.path.join(self.temp.name, "recipes.db")
+        db._ready = False
+        self.old_backup = os.environ.get('BACKUP_DIR')
+        os.environ['BACKUP_DIR'] = os.path.join(self.temp.name, 'backups')
+        import set_up
+        set_up.initialize()
+        self.client = app.test_client()
+
+    def tearDown(self):
+        db.DB_PATH = self.old_path
+        db._ready = False
+        if self.old_backup is None:
+            os.environ.pop('BACKUP_DIR', None)
+        else:
+            os.environ['BACKUP_DIR'] = self.old_backup
+        self.temp.cleanup()
+
+    def create(self, **changes):
+        data = {"name": "Arroz con pollo", "ingredients": [
+            {"name": "arroz", "qty": 200, "unit": "g"},
+            {"name": "pollo", "qty": 400, "unit": "g"},
+            {"name": "cebolla", "qty": 1, "unit": None},
+        ]}
+        data.update(changes)
+        response = self.client.post("/recipes", json=data)
+        self.assertEqual(response.status_code, 201, response.json)
+        return response.json
+
+    def plan(self, recipe, day="lunes", meal="comida", people=None):
+        response = self.client.post(f"/menu/{day}/{meal}", json={"recipe_id": recipe["id"], "people": people})
+        self.assertEqual(response.status_code, 200, response.json)
+
+    def quantities(self):
+        return {(i["name"], i["unit"]): i["qty"] for i in self.client.get("/shopping-list").json}
+
+    def test_optional_fields_and_persistence(self):
+        plain = self.create()
+        self.assertEqual((plain["servings"], plain["preparation"], plain["notes"]), (2, [], ""))
+        rich = self.create(preparation=["Cortar\nla cebolla", "Cocinar", "  "], notes="Variar las verduras", servings=3)
+        db._ready = False  # reabre conexiones e inicialización como tras un reinicio
+        self.assertEqual(self.client.get(f'/recipes/{rich["id"]}').json, rich)
+        self.assertEqual(rich["preparation"], ["Cortar\nla cebolla", "Cocinar"])
+
+    def test_edit_same_id_and_recompute(self):
+        recipe = self.create()
+        self.plan(recipe, people=4)
+        recipe.update(name="Arroz editado", ingredients=[{"name": "arroz", "qty": 300, "unit": "g"}],
+                      preparation=["Hervir"], notes="Tapar")
+        edited = self.client.put(f'/recipes/{recipe["id"]}', json=recipe)
+        self.assertEqual(edited.status_code, 200)
+        self.assertEqual(edited.json["id"], recipe["id"])
+        self.assertEqual(len(self.client.get("/recipes").json), 1)
+        self.assertEqual(self.quantities(), {("Arroz", "g"): 600})
+        self.assertEqual(self.client.get("/menu").json["lunes"]["comida"]["name"], "Arroz editado")
+
+    def test_scaling_defaults_and_original_quantities(self):
+        recipe = self.create()
+        self.plan(recipe, people=4)
+        self.assertEqual(self.quantities(), {("Arroz", "g"): 400, ("Pollo", "g"): 800, ("Cebolla", "uds"): 2})
+        self.assertEqual(self.client.get(f'/recipes/{recipe["id"]}').json, recipe)
+        self.plan(recipe)
+        self.assertEqual(self.quantities()[("Arroz", "g")], 200)
+        recipe["servings"] = 4
+        self.client.put(f'/recipes/{recipe["id"]}', json=recipe)
+        self.assertEqual(self.quantities()[("Arroz", "g")], 200)
+        self.plan(recipe, people=2)
+        self.assertEqual(self.quantities()[("Arroz", "g")], 100)
+
+    def test_combine_convert_separate_and_free_text(self):
+        a = self.create(ingredients=[{"name": "arroz", "qty": .1, "unit": "kg"},
+                                    {"name": "arroz", "qty": "al gusto", "unit": None}])
+        b = self.create(ingredients=[{"name": "ARROZ", "qty": 200, "unit": "g"},
+                                    {"name": "arroz", "qty": 1, "unit": "taza"}])
+        self.plan(a, people=4)
+        self.plan(b, day="martes", people=3)
+        self.assertEqual(self.quantities(), {("Arroz", "g"): 500, ("Arroz", "taza"): 1.5,
+                                             ("Arroz", None): "al gusto"})
+
+    def test_fractional_rounding_and_repeated_recipes(self):
+        recipe = self.create(servings=3, ingredients=[{"name": "huevo", "qty": 1}])
+        self.plan(recipe, people=2)
+        self.plan(recipe, day="martes", people=4)
+        self.assertEqual(self.quantities(), {("Huevo", "uds"): 2})
+
+    def test_validation_does_not_modify_saved_recipe(self):
+        recipe = self.create()
+        for value in [0, -1, 1.5, "2", True, None]:
+            with self.subTest(value=value):
+                response = self.client.put(f'/recipes/{recipe["id"]}', json=dict(recipe, servings=value))
+                self.assertEqual(response.status_code, 400)
+                response = self.client.post("/menu/lunes/comida", json={"recipe_id": recipe["id"], "people": value})
+                self.assertEqual(response.status_code, 200 if value is None else 400)
+        for changes in [{"name": " "}, {"ingredients": []}, {"preparation": "texto"}, {"notes": []}]:
+            self.assertEqual(self.client.put(f'/recipes/{recipe["id"]}', json=dict(recipe, **changes)).status_code, 400)
+        self.assertEqual(self.client.get(f'/recipes/{recipe["id"]}').json, recipe)
+        self.assertEqual(self.client.put('/recipes/999', json=recipe).status_code, 404)
+
+    def test_menu_swap_delete_and_checked(self):
+        a = self.create()
+        b = self.create(name="Otro arroz")
+        self.plan(a, people=4)
+        self.plan(b, meal="cena", people=1)
+        self.assertEqual(self.client.post("/menu/swap", json={"day1": "lunes", "meal1": "comida", "day2": "lunes", "meal2": "cena"}).status_code, 200)
+        menu = self.client.get("/menu").json["lunes"]
+        self.assertEqual((menu["cena"]["id"], menu["cena"]["people"]), (a["id"], 4))
+        self.client.post("/shopping-list/check", json={"name": "arroz", "unit": "g", "checked": True})
+        self.assertTrue(next(i for i in self.client.get("/shopping-list").json if i["name"] == "Arroz")["checked"])
+        self.client.delete(f'/recipes/{a["id"]}')
+        self.assertIsNone(self.client.get("/menu").json["lunes"]["cena"]["name"])
+        self.assertEqual(self.quantities()[("Arroz", "g")], 100)
+        db.replace_menu({("lunes", "comida"): b["id"]})
+        self.assertIsNone(self.client.get("/menu").json["lunes"]["comida"]["people"])
+
+    def test_random_menu_and_edit_type(self):
+        for index in range(len(db.DAYS) * 2):
+            self.create(name=f"Receta {index}")
+        self.assertEqual(self.client.post("/menu/generate").status_code, 200)
+        menu = self.client.get("/menu").json
+        slots = [recipe for meals in menu.values() for recipe in meals.values()]
+        self.assertEqual(len({recipe["id"] for recipe in slots}), len(db.DAYS) * 2)
+        self.assertTrue(all(recipe["people"] is None for recipe in slots))
+        recipe = menu["lunes"]["cena"]
+        recipe["type"] = "comida"
+        self.assertEqual(self.client.put(f'/recipes/{recipe["id"]}', json=recipe).status_code, 200)
+        self.assertIsNone(self.client.get("/menu").json["lunes"]["cena"]["name"])
+        self.assertIsNotNone(self.client.get("/menu").json["lunes"]["comida"]["name"])
+
+    def test_migrate_v3_preserves_data_and_is_idempotent(self):
+        os.unlink(db.DB_PATH)  # exclusivamente el archivo de TemporaryDirectory
+        with closing(sqlite3.connect(db.DB_PATH)) as conn:
+            conn.executescript("""
+                CREATE TABLE recipes (id INTEGER PRIMARY KEY, name TEXT, type TEXT);
+                CREATE TABLE ingredients (id INTEGER PRIMARY KEY, recipe_id INTEGER, position INTEGER, name TEXT, qty REAL, unit TEXT);
+                CREATE TABLE menu (day TEXT, meal TEXT, recipe_id INTEGER, PRIMARY KEY(day, meal));
+                CREATE TABLE shopping_checked (name TEXT, unit TEXT, PRIMARY KEY(name, unit));
+                INSERT INTO recipes VALUES (41, 'Antigua', 'ambos');
+                INSERT INTO ingredients VALUES (7, 41, 0, 'Arroz', 200, 'g');
+                INSERT INTO menu VALUES ('lunes', 'comida', 41);
+                INSERT INTO shopping_checked VALUES ('Arroz', 'g');
+                PRAGMA user_version=3;
+            """)
+        import set_up
+        set_up.create_tables()
+        recipe = self.client.get('/recipes/41').json
+        self.assertEqual((recipe["servings"], recipe["preparation"], recipe["notes"]), (2, [], ""))
+        self.assertEqual(self.quantities(), {("Arroz", "g"): 200})
+        self.assertTrue(self.client.get("/shopping-list").json[0]["checked"])
+        import set_up
+        set_up.create_tables()
+        self.assertEqual(self.client.get('/recipes/41').json, recipe)
+        with db.connection() as conn:
+            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 4)
+            self.assertEqual(conn.execute("SELECT id FROM ingredients").fetchone()[0], 7)
+
+
+if __name__ == "__main__":
+    unittest.main()
