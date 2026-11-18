@@ -1,14 +1,7 @@
 """
-Acceso a datos (SQLite).
-
-Este módulo es el único que habla con la base de datos:
-  - centraliza la ruta (DB_PATH) y las constantes (DAYS, MEALS, RECIPE_TYPES)
-  - ofrece el gestor de contexto connection()
-  - se encarga de que las tablas existan (inicialización perezosa)
-  - contiene todas las consultas que usa main.py
-
-set_up.py solo define el esquema y las migraciones; este módulo lo importa
-únicamente cuando hace falta (ver _ensure_ready), nunca al arrancar.
+Acceso centralizado a SQLite. Solo abre archivos existentes.
+El esquema se comprueba en el primer acceso; la inicialización y las migraciones
+se ejecutan explícitamente con manage.py, nunca desde una petición HTTP.
 """
 
 import os
@@ -67,8 +60,7 @@ REQUIRED_TABLES = ("recipes", "ingredients", "menu", "shopping_checked")
 # CONEXIÓN + INICIALIZACIÓN PEREZOSA
 # ---------------------------------------------------------
 
-# RLock: set_up.create_tables() llama a connection() mientras se está
-# inicializando, y esa llamada (mismo hilo) debe poder entrar sin bloquearse.
+# Serializa la comprobación inicial entre los hilos del servidor.
 _init_lock = threading.RLock()
 _ready = False
 _initializing = False
@@ -76,8 +68,8 @@ _initializing = False
 
 def _open():
     """Abre una conexión nueva (sin comprobar nada)."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=10)
+    from backup import connect_existing
+    conn = connect_existing(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")  # hay que activarlo en cada conexión
     return conn
@@ -92,32 +84,38 @@ def _needs_setup():
             for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
         version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version == SCHEMA_VERSION:
+            expected = {
+                'recipes': {'id', 'name', 'type', 'servings', 'preparation', 'notes'},
+                'ingredients': {'id', 'recipe_id', 'position', 'name', 'qty', 'unit'},
+                'menu': {'day', 'meal', 'recipe_id', 'people'},
+                'shopping_checked': {'name', 'unit'},
+            }
+            for table, columns in expected.items():
+                actual = {r['name'] for r in conn.execute(f'PRAGMA table_info({table})')}
+                if not columns <= actual:
+                    raise RuntimeError(f'Esquema incompleto en {table}; no se reparará creando una base vacía.')
     finally:
         conn.close()
+    if version > SCHEMA_VERSION:
+        raise RuntimeError(f'Esquema {version} demasiado nuevo; esta versión admite {SCHEMA_VERSION}.')
+    if not {'recipes', 'ingredients', 'menu'} <= tables:
+        raise RuntimeError('Base vacía o esquema desconocido. No se inicializará automáticamente; revisa DB_PATH.')
     return not set(REQUIRED_TABLES) <= tables or version < SCHEMA_VERSION
 
 
 def _ensure_ready():
-    """
-    Se ejecuta en la primera conexión. Si las tablas ya existen y están al día,
-    no hace nada más (set_up ni se importa). Si falta algo, importa set_up y
-    crea/migra el esquema.
-
-    El lock evita que varias peticiones en paralelo (/menu, /recipes, /days...)
-    lancen la creación a la vez: las demás esperan y, al entrar, ya está listo.
-    """
+    """Comprueba el esquema una vez por proceso, sin crear ni migrar datos."""
     global _ready, _initializing
     if _ready:
         return
     with _init_lock:
-        if _ready or _initializing:  # _initializing: re-entrada desde set_up
+        if _ready or _initializing:
             return
         _initializing = True
         try:
             if _needs_setup():
-                import set_up  # import tardío: evita importaciones circulares
-
-                set_up.create_tables()
+                raise RuntimeError('La base requiere migración. Detén la app y ejecuta manage.py migrate con BACKUP_DIR configurado.')
             _ready = True
         finally:
             _initializing = False

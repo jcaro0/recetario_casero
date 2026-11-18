@@ -2,11 +2,11 @@
 Esquema de la base de datos y migraciones entre versiones.
 
 Este módulo SOLO crea tablas y migra datos antiguos. La conexión, las rutas y
-las constantes viven en database.py, que importa este módulo únicamente cuando
-detecta que falta una tabla o que el esquema es de una versión anterior.
+las constantes viven en database.py. Este módulo se ejecuta únicamente mediante
+la administración explícita. La API nunca aplica migraciones.
 
-Uso manual (opcional, la app también lo hace sola):
-    python set_up.py
+Uso manual (con la aplicación detenida):
+    python manage.py migrate
 
 Esquema (versión 4):
     recipes           (id, name, type, servings, preparation, notes)
@@ -21,7 +21,6 @@ from database import (
     MEALS,
     RECIPE_TYPES,
     SCHEMA_VERSION,
-    connection,
     read_all,
 )
 from normalize import collapse_spaces, normalize_ingredient_name, normalize_unit
@@ -106,7 +105,6 @@ def _migrate_to_v2(conn):
       - lo que había en el menú pasa a la 'comida' de cada día
       - los nombres de ingredientes y las unidades se normalizan
     """
-    conn.execute("BEGIN")
 
     recipe_cols = {r["name"] for r in conn.execute("PRAGMA table_info(recipes)")}
     if "type" not in recipe_cols:
@@ -122,8 +120,8 @@ def _migrate_to_v2(conn):
         conn.execute("ALTER TABLE menu RENAME TO menu_old")
         conn.execute(_menu_sql())
         conn.execute(
-            "INSERT OR IGNORE INTO menu (day, meal, recipe_id) "
-            "SELECT day, 'comida', recipe_id FROM menu_old WHERE recipe_id IS NOT NULL"
+            "INSERT INTO menu (day, meal, recipe_id) "
+            "SELECT day, 'comida', recipe_id FROM menu_old"
         )
         conn.execute("DROP TABLE menu_old")
 
@@ -141,50 +139,93 @@ def _migrate_to_v2(conn):
         if name != row["name"]:
             conn.execute("UPDATE recipes SET name = ? WHERE id = ?", (name, row["id"]))
 
-    conn.commit()
 
 
 # La versión 3 solo añade la tabla shopping_checked: no hace falta migrar datos,
 # la crea _schema_sql() con IF NOT EXISTS.
 
 
-def create_tables():
-    """Crea las tablas (o actualiza las antiguas). Se puede llamar cuantas veces se quiera."""
-    with connection() as conn:
-        # WAL: más robusto ante cortes de luz y permite leer mientras se escribe.
-        conn.execute("PRAGMA journal_mode = WAL")
-
-        has_recipes = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'recipes'"
-        ).fetchone()
-        version = conn.execute("PRAGMA user_version").fetchone()[0]
-
-        if has_recipes and version < 2:
-            _migrate_to_v2(conn)
-
-        conn.executescript(_schema_sql())
-
-        # Migración aditiva: conserva IDs, ingredientes, menú y marcas existentes.
-        recipe_cols = {r["name"] for r in conn.execute("PRAGMA table_info(recipes)")}
-        for column, definition in {
-            "servings": "INTEGER NOT NULL DEFAULT 2 CHECK (servings > 0)",
-            "preparation": "TEXT NOT NULL DEFAULT '[]'",
-            "notes": "TEXT NOT NULL DEFAULT ''",
-        }.items():
-            if column not in recipe_cols:
-                conn.execute(f"ALTER TABLE recipes ADD COLUMN {column} {definition}")
-        menu_cols = {r["name"] for r in conn.execute("PRAGMA table_info(menu)")}
-        if "people" not in menu_cols:
-            conn.execute("ALTER TABLE menu ADD COLUMN people INTEGER CHECK (people > 0)")
+def initialize():
+    """Solo instalaciones nuevas, nunca sobrescribe un archivo existente."""
+    import os
+    import database as db
+    from pathlib import Path
+    path = Path(db.DB_PATH)
+    if not path.is_absolute():
+        raise ValueError('DB_PATH debe ser absoluto')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    os.close(fd)
+    create_tables(_new=True)
 
 
-        # Una fila por cada día y comida (los 7 días), para poder activar más
-        # días con MENU_DAYS sin tocar la base de datos.
-        conn.executemany(
-            "INSERT OR IGNORE INTO menu (day, meal, recipe_id) VALUES (?, ?, NULL)",
-            [(d, m) for d in ALL_DAYS for m in MEALS],
-        )
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+def create_tables(_new=False):
+    """Migración explícita, respaldada y atómica; no crea archivos ausentes."""
+    import os
+    import database as db
+    from contextlib import closing
+    from backup import backup
+    with closing(db._open()) as conn:
+        version = conn.execute('PRAGMA user_version').fetchone()[0]
+        if version > SCHEMA_VERSION:
+            raise RuntimeError('Esquema demasiado nuevo. Actualiza el código; no restaures una copia antigua.')
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not _new:
+            if not {'recipes', 'ingredients', 'menu'} <= tables:
+                raise RuntimeError('Esquema desconocido o vacío: comprueba la base activa.')
+            if version == SCHEMA_VERSION:
+                if db._needs_setup():
+                    raise RuntimeError('Esquema incompleto; revisa la base sin inicializarla.')
+                return
+            directory = os.environ.get('BACKUP_DIR')
+            if not directory:
+                raise RuntimeError('Configura BACKUP_DIR fuera del repositorio antes de migrar.')
+            saved = backup(db.DB_PATH, directory, label='before-migration')
+            print(f'Copia verificada antes de migrar: {saved}')
+        try:
+            conn.execute('BEGIN IMMEDIATE')
+            if not _new and version < 2:
+                _migrate_to_v2(conn)
+            # executescript hace commit implícito: ejecutar cada sentencia conserva
+            # toda la migración en una única transacción, incluso DDL.
+            import sqlite3
+            statement = ''
+            for line in _schema_sql().splitlines(keepends=True):
+                statement += line
+                if sqlite3.complete_statement(statement):
+                    conn.execute(statement)
+                    statement = ''
+            _upgrade_columns(conn)
+            if conn.execute('PRAGMA foreign_key_check').fetchone():
+                raise RuntimeError('Relaciones inválidas: migración cancelada.')
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        conn.execute('PRAGMA journal_mode=WAL')
+
+
+def _upgrade_columns(conn):
+    # Migración aditiva: conserva IDs, ingredientes, menú y marcas existentes.
+    recipe_cols = {r["name"] for r in conn.execute("PRAGMA table_info(recipes)")}
+    for column, definition in {
+        "servings": "INTEGER NOT NULL DEFAULT 2 CHECK (servings > 0)",
+        "preparation": "TEXT NOT NULL DEFAULT '[]'",
+        "notes": "TEXT NOT NULL DEFAULT ''",
+    }.items():
+        if column not in recipe_cols:
+            conn.execute(f"ALTER TABLE recipes ADD COLUMN {column} {definition}")
+    menu_cols = {r["name"] for r in conn.execute("PRAGMA table_info(menu)")}
+    if "people" not in menu_cols:
+        conn.execute("ALTER TABLE menu ADD COLUMN people INTEGER CHECK (people > 0)")
+
+    # Una fila por cada día y comida (los 7 días), para poder activar más
+    # días con MENU_DAYS sin tocar la base de datos.
+    conn.executemany(
+        "INSERT OR IGNORE INTO menu (day, meal, recipe_id) VALUES (?, ?, NULL)",
+        [(d, m) for d in ALL_DAYS for m in MEALS],
+    )
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
 # ---------------------------------------------------------

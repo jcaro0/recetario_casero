@@ -1,0 +1,8 @@
+data/
+uploads/
+__pycache__/
+*.db
+*.db-*
+*.sqlite*
+*.env
+auth*.json

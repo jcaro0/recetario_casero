@@ -2,3 +2,18 @@
 */__pycache__
 redis-data
 *.rdb
+# Datos locales: nunca desplegar bases con el código.
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.partial
+*.db-journal
+.env
+.env.*
+!*.env.example
+auth*.json
+backups/
+data/
