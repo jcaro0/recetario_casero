@@ -91,3 +91,5 @@
 .ingredients-panel ul, .ingredients-panel ol { padding-left: 22px; }
 .ingredients-panel h4 { margin: 12px 0 6px; }
 .recipe-card-header h3 { overflow-wrap: anywhere; }
+
+.catalog-search { display:block; width:100%; box-sizing:border-box; padding:14px; margin:8px 0 22px; border:1px solid #d7c6b3; border-radius:12px; font:inherit; }

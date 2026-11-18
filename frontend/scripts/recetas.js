@@ -1,6 +1,9 @@
+let catalogRecipes = [];
+const searchKey = value => String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 document.addEventListener("DOMContentLoaded", () => {
     loadRecipesView();
     setupRecipeExpansion();
+    document.getElementById("catalogSearch").addEventListener("input", filterRecipes);
 });
 
 async function loadRecipesView() {
@@ -13,7 +16,21 @@ async function loadRecipesView() {
             list.innerHTML = emptyStateHtml("No hay recetas añadidas");
             return;
         }
-        list.innerHTML = recipes.map(recipe => `
+        catalogRecipes = recipes;
+        renderRecipes();
+    } catch {
+        list.innerHTML = "<p>Error al cargar las recetas.</p>";
+    }
+}
+
+function filterRecipes() { renderRecipes(); }
+
+function renderRecipes() {
+    const list = document.getElementById("recipesContainer");
+    const query = searchKey(document.getElementById("catalogSearch").value.trim());
+    const recipes = catalogRecipes.filter(recipe => searchKey([recipe.name, ...recipe.ingredients.map(i => i.name)].join(" ")).includes(query));
+    if (!recipes.length) { list.innerHTML = "<p>No hay recetas que coincidan.</p>"; return; }
+    list.innerHTML = recipes.map(recipe => `
             <div class="recipe-card" data-id="${recipe.id}">
                 <div class="recipe-card-header">
                     <div>
@@ -38,9 +55,6 @@ async function loadRecipesView() {
                 </div>
             </div>
         `).join("");
-    } catch {
-        list.innerHTML = "<p>Error.</p>";
-    }
 }
 
 function setupRecipeExpansion() {
