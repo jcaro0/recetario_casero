@@ -49,12 +49,7 @@ def api_days():
 
 def _slot_json(recipe):
     if recipe:
-        return {
-            "id": recipe["id"],
-            "name": recipe["name"],
-            "type": recipe["type"],
-            "ingredients": recipe["ingredients"],
-        }
+        return recipe
     return {"name": None, "ingredients": []}
 
 
@@ -167,7 +162,10 @@ def api_set_menu_slot(day, meal):
                      f"no se puede poner en la {meal}."
         }), 400
 
-    db.set_menu_slot(day, meal, recipe["id"])
+    people = data.get("people")
+    if people is not None and not positive_integer(people):
+        return jsonify({"error": "Los comensales deben ser un entero positivo"}), 400
+    db.set_menu_slot(day, meal, recipe["id"], people)
 
     return jsonify({"ok": True})
 
@@ -225,7 +223,8 @@ def clean_ingredients(raw):
             try:
                 qty = float(qty)
             except (TypeError, ValueError):
-                qty = None
+                # Texto libre: se conserva, pero nunca se escala en la compra.
+                qty = str(ing.get("qty")).strip()
             else:
                 if not math.isfinite(qty) or qty < 0:
                     qty = None
@@ -253,6 +252,14 @@ def api_check_duplicate():
 
 @app.route("/recipes", methods=["POST"])
 def api_create_recipe():
+    return save_recipe()
+
+
+def positive_integer(value):
+    return type(value) is int and 0 < value <= 2147483647
+
+
+def save_recipe(recipe_id=None):
     data = request.get_json(silent=True) or {}
 
     name = collapse_spaces(data.get("name"))
@@ -265,9 +272,37 @@ def api_create_recipe():
             "error": "Tipo no válido (usa: " + ", ".join(db.RECIPE_TYPES) + ")"
         }), 400
 
-    recipe = db.create_recipe(name, clean_ingredients(data.get("ingredients")), recipe_type)
+    servings = data.get("servings", 2)
+    if not positive_integer(servings):
+        return jsonify({"error": "Las raciones deben ser un entero positivo"}), 400
+    preparation = data.get("preparation", [])
+    notes = data.get("notes", "")
+    if not isinstance(preparation, list) or any(not isinstance(step, str) for step in preparation):
+        return jsonify({"error": "La preparación debe ser una lista de pasos de texto"}), 400
+    if not isinstance(notes, str):
+        return jsonify({"error": "Las notas deben ser texto"}), 400
+    ingredients = clean_ingredients(data.get("ingredients"))
+    if not ingredients:
+        return jsonify({"error": "Añade al menos un ingrediente"}), 400
+    values = dict(name=name, ingredients=ingredients, recipe_type=recipe_type,
+                  servings=servings, preparation=[step.strip() for step in preparation if step.strip()],
+                  notes=notes.strip())
+    recipe = (db.update_recipe(recipe_id, **values) if recipe_id is not None
+              else db.create_recipe(**values))
+    if recipe is None:
+        return jsonify({"error": "Receta no encontrada"}), 404
 
-    return jsonify(recipe), 201
+    return jsonify(recipe), 200 if recipe_id is not None else 201
+
+
+@app.route("/recipes/<int:recipe_id>", methods=["GET", "PUT"])
+def api_recipe(recipe_id):
+    if request.method == "PUT":
+        return save_recipe(recipe_id)
+    recipe = db.get_recipe(recipe_id)
+    if recipe is None:
+        return jsonify({"error": "Receta no encontrada"}), 404
+    return jsonify(recipe)
 
 
 @app.route("/recipes/<int:recipe_id>", methods=["DELETE"])

@@ -66,6 +66,11 @@ body {
 
 .material-symbols-rounded {
     font-size: 24px;
+    display: inline-block;
+    width: 1em;
+    flex-shrink: 0;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .top-nav {

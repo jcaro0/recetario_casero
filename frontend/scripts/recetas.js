@@ -16,23 +16,26 @@ async function loadRecipesView() {
         list.innerHTML = recipes.map(recipe => `
             <div class="recipe-card" data-id="${recipe.id}">
                 <div class="recipe-card-header">
-                    <span class="recipe-icon">🍲</span>
                     <div>
                         <h3>${escapeHtml(recipe.name)}</h3>
-                        <small>${recipe.ingredients.length} ingredientes</small>
+                        <small>${recipe.ingredients.length} ingredientes · ${recipe.servings || 2} raciones</small>
                         ${typeBadge(recipe.type)}
                     </div>
                 </div>
-                <button
+                <a class="editRecipe" href="agregar_recetas.html?id=${recipe.id}" aria-label="Editar ${escapeHtml(recipe.name)}">Editar</a>
+                <button aria-label="Eliminar ${escapeHtml(recipe.name)}"
                     class="deleteRecipe"
                     onclick="deleteRecipe(${recipe.id})">
                     <span class="material-symbols-rounded">delete</span>
                 </button>
-                <ul class="ingredients-panel">
+                <div class="ingredients-panel"><h4>Ingredientes</h4><ul>
                     ${recipe.ingredients.map(i => `
                         <li>${escapeHtml(i.name)}${escapeHtml(formatQtyUnit(i.qty, i.unit))}</li>
                     `).join("")}
                 </ul>
+                ${(recipe.preparation || []).length ? `<h4>Preparación</h4><ol>${recipe.preparation.map(step => `<li class="recipe-text">${escapeHtml(step)}</li>`).join("")}</ol>` : ""}
+                ${recipe.notes ? `<h4>Notas</h4><p class="recipe-text">${escapeHtml(recipe.notes)}</p>` : ""}
+                </div>
             </div>
         `).join("");
     } catch {
@@ -42,7 +45,7 @@ async function loadRecipesView() {
 
 function setupRecipeExpansion() {
     document.addEventListener("click", (e) => {
-        if (e.target.closest(".deleteRecipe")) return;
+        if (e.target.closest(".deleteRecipe, .editRecipe")) return;
         const card = e.target.closest(".recipe-card");
         document.querySelectorAll(".recipe-card.expanded").forEach(c => {
             if (c !== card) c.classList.remove("expanded");

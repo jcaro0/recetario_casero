@@ -79,3 +79,15 @@
         gap: 20px;
     }
 }
+.recipe-card-header { padding-right: 110px; }
+.editRecipe {
+    position: absolute;
+    top: 22px;
+    right: 60px;
+    color: var(--brown-darker);
+    font-weight: 600;
+}
+.recipe-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ingredients-panel ul, .ingredients-panel ol { padding-left: 22px; }
+.ingredients-panel h4 { margin: 12px 0 6px; }
+.recipe-card-header h3 { overflow-wrap: anywhere; }

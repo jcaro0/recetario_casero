@@ -1,151 +1,222 @@
-let pendingRecipe = null; // receta a la espera de que se confirme el duplicado
+let pendingRecipe = null;
+let editingRecipeId = null;
+let savingRecipe = false;
 
-document.addEventListener("DOMContentLoaded", () => {
-    setupRecipeForm();
+const field = id => document.getElementById(id);
+
+document.addEventListener("DOMContentLoaded", async () => {
     setupDuplicateModal();
+    field("recipeForm").addEventListener("submit", saveRecipe);
+    field("recipeForm").addEventListener("keydown", advanceOnEnter);
+    field("addStep").onclick = () => addPreparationStep().focus();
+    try {
+        const id = new URLSearchParams(location.search).get("id");
+        if (id !== null) {
+            if (!/^\d+$/.test(id)) throw new Error("Identificador de receta no válido");
+            editingRecipeId = Number(id);
+            const recipe = await api(`/recipes/${editingRecipeId}`);
+            document.title = "Editar receta";
+            document.querySelector(".recipeHero h1").textContent = "Editar receta";
+            document.querySelector(".logo span").textContent = "Editar receta";
+            field("typeChangeHint").classList.remove("hidden");
+            field("recipeName").value = recipe.name;
+            field("recipeServings").value = recipe.servings || 2;
+            field(`type-${recipe.type || "ambos"}`).checked = true;
+            recipe.ingredients.forEach(ing => field("ingredientList").appendChild(createIngredientRow(ing)));
+            (recipe.preparation || []).forEach(step => addPreparationStep(step));
+            field("recipeNotes").value = recipe.notes || "";
+        }
+        field("ingredientList").appendChild(createIngredientRow());
+        field("recipeFields").disabled = false;
+    } catch (err) {
+        field("formStatus").textContent = "No se pudo abrir la receta: " + err.message;
+    }
 });
 
-function setupRecipeForm() {
-    const ingredientList = document.getElementById("ingredientList");
-    ingredientList.appendChild(createIngredientRow());
-    document.getElementById("recipeForm")
-        .addEventListener("submit", saveRecipe);
-}
-
-function createIngredientRow() {
+function createIngredientRow(ingredient = {}) {
     const div = document.createElement("div");
-    div.className = "ingredient-row ghost";
+    div.className = "ingredient-row" + (ingredient.name ? "" : " ghost");
     div.innerHTML = `
-        <input placeholder="Nuevo ingrediente" class="ingredient-name">
-        <input placeholder="Cantidad"
-               class="ingredient-qty"
-               type="number"
-               min="0"
-               step="any">
-        <select class="ingredient-unit">
-            <option value="">Default</option>
-            <option value="g">g — gramos</option>
-            <option value="ml">ml — mililitros</option>
-            <option value="uds">uds — unidades</option>
-            <option value="cda">cda — cucharada</option>
+        <input placeholder="Nuevo ingrediente" aria-label="Ingrediente" class="ingredient-name">
+        <input placeholder="Cantidad" aria-label="Cantidad" class="ingredient-qty" inputmode="decimal">
+        <select class="ingredient-unit" aria-label="Unidad">
+            <option value="">Sin unidad</option>
+            <option value="g">g — gramos</option><option value="kg">kg — kilos</option>
+            <option value="ml">ml — mililitros</option><option value="l">l — litros</option>
+            <option value="uds">uds — unidades</option><option value="cda">cda — cucharada</option>
             <option value="taza">taza — tazas</option>
         </select>
-        <button type="button" class="deleteIngredient">✕</button>
-    `;
-
-    const nameInput = div.querySelector(".ingredient-name");
-    const qtyInput = div.querySelector(".ingredient-qty");
-    const unitSelect = div.querySelector(".ingredient-unit");
-    const deleteButton = div.querySelector("button");
-
-    nameInput.addEventListener("input", () => {
-        const hasText = nameInput.value.trim() !== "";
-        const list = document.getElementById("ingredientList");
-        div.classList.toggle("ghost", !hasText);
-        if (hasText && div === list.lastElementChild) {
-            list.appendChild(createIngredientRow());
+        <button type="button" class="deleteIngredient" aria-label="Eliminar ingrediente">✕</button>`;
+    const name = div.querySelector(".ingredient-name");
+    const qty = div.querySelector(".ingredient-qty");
+    const unit = div.querySelector(".ingredient-unit");
+    name.value = ingredient.name || "";
+    qty.value = ingredient.qty ?? "";
+    if (ingredient.unit && !Array.from(unit.options).some(o => o.value === ingredient.unit)) {
+        unit.add(new Option(ingredient.unit, ingredient.unit));
+    }
+    unit.value = ingredient.unit || "";
+    name.oninput = () => {
+        div.classList.toggle("ghost", !name.value.trim());
+        name.setCustomValidity("");
+        if (name.value.trim() && div === field("ingredientList").lastElementChild) {
+            field("ingredientList").appendChild(createIngredientRow());
         }
-    });
-
-    qtyInput.addEventListener("input", () => {
-        unitSelect.classList.remove("invalid");
-    });
-
-    unitSelect.addEventListener("change", () => {
-        if (qtyInput.value.trim() === "") {
-            unitSelect.value = "";
-        }
-        unitSelect.classList.remove("invalid");
-    });
-
-    deleteButton.onclick = () => {
-        const list = document.getElementById("ingredientList");
+    };
+    qty.oninput = () => qty.setCustomValidity("");
+    div.querySelector("button").onclick = () => {
         div.remove();
-        const last = list.lastElementChild;
-        if (!last || !last.classList.contains("ghost")) {
+        const list = field("ingredientList");
+        if (!list.lastElementChild || !list.lastElementChild.classList.contains("ghost")) {
             list.appendChild(createIngredientRow());
         }
     };
-
     return div;
 }
 
-// Lee el formulario y devuelve la receta lista para enviar
-function collectRecipe() {
-    const ingredients = [];
+function addPreparationStep(text = "") {
+    const row = document.createElement("div");
+    row.className = "preparation-row";
+    row.innerHTML = `<label></label><textarea rows="2" class="preparation-step"></textarea>
+        <div class="step-actions">
+            <button type="button" class="secondary move-up" aria-label="Subir paso">↑</button>
+            <button type="button" class="secondary move-down" aria-label="Bajar paso">↓</button>
+            <button type="button" class="deleteIngredient" aria-label="Eliminar paso">✕</button>
+        </div>`;
+    const textarea = row.querySelector("textarea");
+    textarea.value = text;
+    row.querySelector(".move-up").onclick = () => {
+        if (row.previousElementSibling) row.previousElementSibling.before(row);
+        numberSteps();
+    };
+    row.querySelector(".move-down").onclick = () => {
+        if (row.nextElementSibling) row.nextElementSibling.after(row);
+        numberSteps();
+    };
+    row.querySelector(".deleteIngredient").onclick = () => { row.remove(); numberSteps(); };
+    field("preparationList").appendChild(row);
+    numberSteps();
+    return textarea;
+}
 
-    document.querySelectorAll(".ingredient-row").forEach(row => {
-        const nameRaw = row.querySelector(".ingredient-name").value.trim();
-        const qtyRaw = row.querySelector(".ingredient-qty").value.trim();
-        const unitRaw = row.querySelector(".ingredient-unit").value;
-
-        if (nameRaw === "") return;
-
-        if (qtyRaw === "") {
-            ingredients.push({ name: nameRaw, qty: null, unit: null });
-            return;
-        }
-
-        ingredients.push({
-            name: nameRaw,
-            qty: Number(qtyRaw),
-            unit: unitRaw === "" ? null : unitRaw
-        });
+function numberSteps() {
+    document.querySelectorAll(".preparation-row").forEach((row, index) => {
+        const textarea = row.querySelector("textarea");
+        textarea.id = `preparation-${index}`;
+        row.querySelector("label").htmlFor = textarea.id;
+        row.querySelector("label").textContent = `Paso ${index + 1}`;
+        row.querySelector(".move-up").disabled = index === 0;
+        row.querySelector(".move-down").disabled = !row.nextElementSibling;
     });
+}
 
+function advanceOnEnter(e) {
+    if (e.key !== "Enter" || e.isComposing) return;
+    const target = e.target;
+    // Botones explícitos conservan su activación. Notas y Mayús+Enter son multilínea.
+    if (target.closest("button, a") || target.id === "recipeNotes" ||
+        (target.tagName === "TEXTAREA" && e.shiftKey)) return;
+    e.preventDefault();
+    if (target.classList.contains("preparation-step")) {
+        const next = target.closest(".preparation-row").nextElementSibling;
+        if (next) next.querySelector("textarea").focus();
+        else if (target.value.trim()) addPreparationStep().focus();
+        else field("recipeNotes").focus();
+        return;
+    }
+    const row = target.closest(".ingredient-row");
+    if (row) {
+        const inputs = Array.from(row.querySelectorAll("input, select"));
+        const index = inputs.indexOf(target);
+        if (index === 0 && !target.value.trim()) {
+            const step = document.querySelector(".preparation-step");
+            (step || field("addStep")).focus();
+        } else if (index < 2) inputs[index + 1].focus();
+        else {
+            const next = row.nextElementSibling || field("ingredientList").appendChild(createIngredientRow());
+            next.querySelector("input").focus();
+        }
+        return;
+    }
+    if (target.id === "recipeName") field("recipeServings").focus();
+    else if (target.id === "recipeServings" || target.name === "recipeType") {
+        field("ingredientList").querySelector("input").focus();
+    }
+}
+
+function collectRecipe() {
+    const ingredients = Array.from(document.querySelectorAll(".ingredient-row")).map(row => ({
+        name: row.querySelector(".ingredient-name").value.trim(),
+        qty: row.querySelector(".ingredient-qty").value.trim().replace(/^(\d+),(\d+)$/, "$1.$2") || null,
+        unit: row.querySelector(".ingredient-unit").value || null
+    })).filter(ing => ing.name);
     return {
-        name: document.getElementById("recipeName").value,
-        type: (document.querySelector('input[name="recipeType"]:checked') || {}).value || "ambos",
-        ingredients
+        name: field("recipeName").value.trim(),
+        servings: Number(field("recipeServings").value),
+        type: document.querySelector('input[name="recipeType"]:checked').value,
+        ingredients,
+        preparation: Array.from(document.querySelectorAll(".preparation-step")).map(el => el.value.trim()).filter(Boolean),
+        notes: field("recipeNotes").value
     };
 }
 
 function resetRecipeForm() {
-    document.getElementById("recipeForm").reset();
-    const ingredientList = document.getElementById("ingredientList");
-    ingredientList.innerHTML = "";
-    ingredientList.appendChild(createIngredientRow());
+    field("recipeForm").reset();
+    field("ingredientList").replaceChildren(createIngredientRow());
+    field("preparationList").replaceChildren();
 }
 
-// Guarda la receta en el servidor. Si falla, NO se limpia el formulario.
 async function submitRecipe(recipe) {
+    if (savingRecipe) return;
+    savingRecipe = true;
+    field("recipeFields").disabled = true;
     try {
-        await api("/recipes", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(recipe)
+        await api(editingRecipeId === null ? "/recipes" : `/recipes/${editingRecipeId}`, {
+            method: editingRecipeId === null ? "POST" : "PUT",
+            headers: { "Content-Type": "application/json" }, body: JSON.stringify(recipe)
         });
+        if (editingRecipeId !== null) location.href = "recetas.html";
+        else { resetRecipeForm(); field("formStatus").textContent = "Receta guardada."; }
     } catch (err) {
-        alert("No se pudo guardar la receta: " + err.message);
-        return;
+        field("formStatus").textContent = "No se pudo guardar: " + err.message;
+    } finally {
+        savingRecipe = false;
+        field("recipeFields").disabled = false;
     }
-    resetRecipeForm();
 }
 
 async function saveRecipe(e) {
     e.preventDefault();
+    // Solo el botón Guardar puede enviar: ningún envío implícito desde otro campo.
+    if (!e.submitter?.matches('.submitButton') || savingRecipe) return;
+    if (!field("recipeForm").reportValidity()) return;
     const recipe = collectRecipe();
-
-    // Antes de guardar: ¿ya hay otra receta con exactamente los mismos ingredientes?
-    let duplicate = null;
+    if (!recipe.name) { field("recipeName").focus(); return; }
+    if (!recipe.ingredients.length) {
+        const input = document.querySelector(".ingredient-name");
+        input.setCustomValidity("Añade al menos un ingrediente"); input.reportValidity(); return;
+    }
+    for (const input of document.querySelectorAll(".ingredient-qty")) {
+        const value = input.value.trim().replace(",", ".");
+        if (value && !Number.isNaN(Number(value)) && (!Number.isFinite(Number(value)) || Number(value) < 0)) {
+            input.setCustomValidity("La cantidad debe ser positiva o cero"); input.reportValidity(); return;
+        }
+    }
+    field("formStatus").textContent = "Guardando receta…";
+    if (editingRecipeId !== null) { await submitRecipe(recipe); return; }
+    // Se mantiene la comprobación de duplicados para las recetas nuevas.
+    savingRecipe = true;
     try {
         const result = await api("/recipes/check-duplicate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ingredients: recipe.ingredients })
         });
-        duplicate = result.duplicate;
+        savingRecipe = false;
+        if (result.duplicate) openDuplicateModal(recipe, result.duplicate.name);
+        else await submitRecipe(recipe);
     } catch (err) {
-        alert("No se pudo comprobar si la receta ya existe: " + err.message);
-        return;
-    }
-
-    if (duplicate) {
-        openDuplicateModal(recipe, duplicate.name);
-        return;
-    }
-
-    await submitRecipe(recipe);
+        field("formStatus").textContent = "No se pudo comprobar la receta: " + err.message;
+    } finally { savingRecipe = false; }
 }
 
 // ---------------------------------------------------------
@@ -177,6 +248,7 @@ function setupDuplicateModal() {
 
 function openDuplicateModal(recipe, existingName) {
     pendingRecipe = recipe;
+    field("formStatus").textContent = "Ya existe una receta con estos ingredientes. Confirma si quieres añadir otra.";
     document.getElementById("duplicateModalText").textContent =
         `Esta es la misma receta que: ${existingName}? Quiere agregarla?`;
     document.getElementById("duplicateModal").classList.remove("hidden");

@@ -12,6 +12,8 @@ set_up.py solo define el esquema y las migraciones; este módulo lo importa
 """
 
 import os
+import json
+from decimal import Decimal, InvalidOperation
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -57,7 +59,7 @@ MEALS = ["comida", "cena"]
 RECIPE_TYPES = ["ambos", "comida", "cena", "extra"]
 
 # Versión del esquema (PRAGMA user_version). La define el esquema, no set_up.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 REQUIRED_TABLES = ("recipes", "ingredients", "menu", "shopping_checked")
 
 
@@ -145,7 +147,7 @@ def connection():
 
 def read_recipes():
     with connection() as conn:
-        rows = conn.execute("SELECT id, name, type FROM recipes ORDER BY id").fetchall()
+        rows = conn.execute("SELECT id, name, type, servings, preparation, notes FROM recipes ORDER BY id").fetchall()
     return [dict(r) for r in rows]
 
 
@@ -161,10 +163,11 @@ def read_ingredients():
 def read_menu():
     """Todas las filas de la tabla menu (los 7 días, comida y cena)."""
     with connection() as conn:
-        rows = conn.execute("SELECT day, meal, recipe_id FROM menu").fetchall()
-    by_slot = {(r["day"], r["meal"]): r["recipe_id"] for r in rows}
+        rows = conn.execute("SELECT day, meal, recipe_id, people FROM menu").fetchall()
+    by_slot = {(r["day"], r["meal"]): dict(r) for r in rows}
     return [
-        {"day": d, "meal": m, "recipe_id": by_slot.get((d, m))}
+        {"day": d, "meal": m, "recipe_id": by_slot.get((d, m), {}).get("recipe_id"),
+         "people": by_slot.get((d, m), {}).get("people")}
         for d in ALL_DAYS
         for m in MEALS
     ]
@@ -201,8 +204,8 @@ def fits_meal(recipe_type, meal):
 
 def _clean_qty(qty):
     """SQLite devuelve REAL (200.0); lo mostramos como 200 si es entero."""
-    if qty is None:
-        return None
+    if qty is None or isinstance(qty, str):
+        return qty
     return int(qty) if float(qty).is_integer() else qty
 
 
@@ -212,7 +215,9 @@ def _ingredient_dict(row):
 
 def _group_recipes(recipe_rows, ingredient_rows):
     recipes = {
-        r["id"]: {"id": r["id"], "name": r["name"], "type": r["type"], "ingredients": []}
+        r["id"]: {"id": r["id"], "name": r["name"], "type": r["type"],
+                  "servings": r["servings"], "preparation": json.loads(r["preparation"]),
+                  "notes": r["notes"], "ingredients": []}
         for r in recipe_rows
     }
     for ing in ingredient_rows:
@@ -222,34 +227,48 @@ def _group_recipes(recipe_rows, ingredient_rows):
     return recipes
 
 
-def create_recipe(name, ingredients, recipe_type="ambos"):
-    """
-    Inserta receta + ingredientes en una sola transacción y la devuelve.
-    Los nombres de ingredientes se normalizan aquí (Cebolla, Pina, ...).
-    """
-    if recipe_type not in RECIPE_TYPES:
-        raise ValueError(f"Tipo de receta no válido: {recipe_type}")
-
+def _write_ingredients(conn, recipe_id, ingredients):
     rows = []
     for ing in ingredients:
-        ing_name = normalize_ingredient_name(ing["name"])
-        if not ing_name:
-            continue
-        qty = ing.get("qty")
-        unit = normalize_unit(ing.get("unit")) if qty is not None else None
-        rows.append((ing_name, qty, unit))
+        name = normalize_ingredient_name(ing["name"])
+        if name:
+            qty = ing.get("qty")
+            unit = normalize_unit(ing.get("unit"))
+            rows.append((recipe_id, len(rows), name, qty, unit))
+    conn.executemany(
+        "INSERT INTO ingredients (recipe_id, position, name, qty, unit) VALUES (?, ?, ?, ?, ?)",
+        rows,
+    )
 
+
+def create_recipe(name, ingredients, recipe_type="ambos", servings=2, preparation=None, notes=""):
+    if recipe_type not in RECIPE_TYPES:
+        raise ValueError(f"Tipo de receta no válido: {recipe_type}")
     with connection() as conn:
         cur = conn.execute(
-            "INSERT INTO recipes (name, type) VALUES (?, ?)",
-            (collapse_spaces(name), recipe_type),
+            "INSERT INTO recipes (name, type, servings, preparation, notes) VALUES (?, ?, ?, ?, ?)",
+            (collapse_spaces(name), recipe_type, servings, json.dumps(preparation or []), notes),
         )
         recipe_id = cur.lastrowid
-        conn.executemany(
-            "INSERT INTO ingredients (recipe_id, position, name, qty, unit) "
-            "VALUES (?, ?, ?, ?, ?)",
-            [(recipe_id, pos, n, q, u) for pos, (n, q, u) in enumerate(rows)],
+        _write_ingredients(conn, recipe_id, ingredients)
+    return get_recipe(recipe_id)
+
+
+def update_recipe(recipe_id, name, ingredients, recipe_type="ambos", servings=2, preparation=None, notes=""):
+    """Mantiene el ID y las referencias del menú; reemplaza ingredientes de forma atómica."""
+    with connection() as conn:
+        cur = conn.execute(
+            "UPDATE recipes SET name=?, type=?, servings=?, preparation=?, notes=? WHERE id=?",
+            (collapse_spaces(name), recipe_type, servings, json.dumps(preparation or []), notes, recipe_id),
         )
+        if not cur.rowcount:
+            return None
+        conn.execute("DELETE FROM ingredients WHERE recipe_id=?", (recipe_id,))
+        _write_ingredients(conn, recipe_id, ingredients)
+        # Un cambio de tipo solo vacía los huecos que ya no admiten la receta.
+        if recipe_type in MEALS:
+            conn.execute("UPDATE menu SET recipe_id=NULL, people=NULL WHERE recipe_id=? AND meal != ?",
+                         (recipe_id, recipe_type))
     return get_recipe(recipe_id)
 
 
@@ -261,7 +280,7 @@ def get_recipe(recipe_id):
 
     with connection() as conn:
         recipe = conn.execute(
-            "SELECT id, name, type FROM recipes WHERE id = ?", (recipe_id,)
+            "SELECT id, name, type, servings, preparation, notes FROM recipes WHERE id = ?", (recipe_id,)
         ).fetchone()
         if recipe is None:
             return None
@@ -277,7 +296,7 @@ def get_recipe(recipe_id):
 def get_all_recipes():
     with connection() as conn:
         recipe_rows = conn.execute(
-            "SELECT id, name, type FROM recipes ORDER BY id"
+            "SELECT id, name, type, servings, preparation, notes FROM recipes ORDER BY id"
         ).fetchall()
         ingredient_rows = conn.execute(
             "SELECT recipe_id, name, qty, unit FROM ingredients "
@@ -352,15 +371,18 @@ def get_menu():
     menu = {day: {meal: None for meal in MEALS} for day in DAYS}
     for row in read_menu():
         if row["day"] in menu:  # ignora filas de días inactivos (p. ej. sábado)
-            menu[row["day"]][row["meal"]] = recipes.get(row["recipe_id"])
+            recipe = recipes.get(row["recipe_id"])
+            menu[row["day"]][row["meal"]] = (
+                dict(recipe, people=row["people"]) if recipe else None
+            )
     return menu
 
 
-def set_menu_slot(day, meal, recipe_id):
+def set_menu_slot(day, meal, recipe_id, people=None):
     with connection() as conn:
         conn.execute(
-            "UPDATE menu SET recipe_id = ? WHERE day = ? AND meal = ?",
-            (recipe_id, day, meal),
+            "UPDATE menu SET recipe_id = ?, people = ? WHERE day = ? AND meal = ?",
+            (recipe_id, people, day, meal),
         )
 
 
@@ -370,7 +392,7 @@ def replace_menu(assignments):
     Al ser un menú nuevo, también se desmarca la lista de la compra.
     """
     with connection() as conn:
-        conn.execute("UPDATE menu SET recipe_id = NULL")
+        conn.execute("UPDATE menu SET recipe_id = NULL, people = NULL")
         conn.executemany(
             "UPDATE menu SET recipe_id = ? WHERE day = ? AND meal = ?",
             [(rid, day, meal) for (day, meal), rid in assignments.items()],
@@ -386,15 +408,15 @@ def swap_menu_slots(day1, meal1, day2, meal2):
     """
     with connection() as conn:
         rows = conn.execute(
-            "SELECT m.day, m.meal, m.recipe_id, r.type "
+            "SELECT m.day, m.meal, m.recipe_id, m.people, r.type "
             "FROM menu m LEFT JOIN recipes r ON r.id = m.recipe_id "
             "WHERE (m.day = ? AND m.meal = ?) OR (m.day = ? AND m.meal = ?)",
             (day1, meal1, day2, meal2),
         ).fetchall()
-        slots = {(r["day"], r["meal"]): (r["recipe_id"], r["type"]) for r in rows}
+        slots = {(r["day"], r["meal"]): (r["recipe_id"], r["type"], r["people"]) for r in rows}
 
-        id1, type1 = slots.get((day1, meal1), (None, None))
-        id2, type2 = slots.get((day2, meal2), (None, None))
+        id1, type1, people1 = slots.get((day1, meal1), (None, None, None))
+        id2, type2, people2 = slots.get((day2, meal2), (None, None, None))
 
         if id2 is not None and not fits_meal(type2, meal1):
             raise IncompatibleMeal("Esa receta no es válida para ese hueco del menú.")
@@ -402,24 +424,36 @@ def swap_menu_slots(day1, meal1, day2, meal2):
             raise IncompatibleMeal("Esa receta no es válida para ese hueco del menú.")
 
         conn.execute(
-            "UPDATE menu SET recipe_id = ? WHERE day = ? AND meal = ?",
-            (id2, day1, meal1),
+            "UPDATE menu SET recipe_id = ?, people = ? WHERE day = ? AND meal = ?",
+            (id2, people2, day1, meal1),
         )
         conn.execute(
-            "UPDATE menu SET recipe_id = ? WHERE day = ? AND meal = ?",
-            (id1, day2, meal2),
+            "UPDATE menu SET recipe_id = ?, people = ? WHERE day = ? AND meal = ?",
+            (id1, people1, day2, meal2),
         )
 
 
 def clear_menu():
     with connection() as conn:
-        conn.execute("UPDATE menu SET recipe_id = NULL")
+        conn.execute("UPDATE menu SET recipe_id = NULL, people = NULL")
         conn.execute("DELETE FROM shopping_checked")
 
 
 # ---------------------------------------------------------
 # LISTA DE LA COMPRA (suma de ingredientes del menú actual)
 # ---------------------------------------------------------
+
+def shopping_unit(unit):
+    aliases = {
+        "kg": ("g", 1000), "kilogramo": ("g", 1000), "kilogramos": ("g", 1000),
+        "gramos": ("g", 1), "gr": ("g", 1), "gramo": ("g", 1),
+        "l": ("ml", 1000), "litro": ("ml", 1000), "litros": ("ml", 1000),
+        "mililitro": ("ml", 1), "mililitros": ("ml", 1),
+        "ud": ("uds", 1), "unidad": ("uds", 1), "unidades": ("uds", 1),
+    }
+    canonical, factor = aliases.get(unit, (unit, 1))
+    return canonical, Decimal(factor)
+
 
 def get_shopping_list():
     """
@@ -435,8 +469,9 @@ def get_shopping_list():
     marks = ", ".join("?" for _ in DAYS)
     with connection() as conn:
         rows = conn.execute(
-            "SELECT i.name, i.qty, i.unit "
-            "FROM menu m JOIN ingredients i ON i.recipe_id = m.recipe_id "
+            "SELECT i.name, i.qty, i.unit, m.people, r.servings "
+            "FROM menu m JOIN recipes r ON r.id = m.recipe_id "
+            "JOIN ingredients i ON i.recipe_id = m.recipe_id "
             f"WHERE m.day IN ({marks})",
             DAYS,
         ).fetchall()
@@ -447,6 +482,7 @@ def get_shopping_list():
 
     totals = {}
     without_qty = set()
+    text_quantities = set()
 
     for r in rows:
         name = normalize_ingredient_name(r["name"])
@@ -458,14 +494,25 @@ def get_shopping_list():
             continue
 
         unit = normalize_unit(r["unit"]) or "uds"
-        totals[(name, unit)] = totals.get((name, unit), 0) + r["qty"]
+        try:
+            qty = Decimal(str(r["qty"]))
+            if not qty.is_finite():
+                raise InvalidOperation
+        except InvalidOperation:
+            text_quantities.add((name, str(r["qty"]), r["unit"]))
+            continue
+        unit, multiplier = shopping_unit(unit)
+        qty *= multiplier * Decimal(r["people"] or r["servings"]) / Decimal(r["servings"])
+        totals[(name, unit)] = totals.get((name, unit), Decimal(0)) + qty
 
     items = [
-        {"name": name, "unit": unit, "qty": _clean_qty(round(qty, 2))}
+        {"name": name, "unit": unit, "qty": _clean_qty(float(round(qty, 3)))}
         for (name, unit), qty in totals.items()
     ]
 
-    names_with_qty = {name for name, _ in totals}
+    items += [{"name": name, "qty": qty, "unit": unit}
+              for name, qty, unit in sorted(text_quantities, key=lambda x: (x[0], x[1], x[2] or ""))]
+    names_with_qty = {name for name, _ in totals} | {name for name, _, _ in text_quantities}
     items += [
         {"name": name, "unit": None, "qty": None}
         for name in without_qty

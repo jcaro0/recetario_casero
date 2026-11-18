@@ -57,11 +57,14 @@
 
     <h1>Nueva receta</h1>
 
-    <p>Añádela con su nombre, tipo e ingredientes.</p>
+    <p>Añade los ingredientes y, si quieres, la preparación y tus notas.</p>
 
 </section>
 
 <form id="recipeForm" class="recipe-form">
+
+    <fieldset id="recipeFields" disabled>
+    <h2>Datos generales</h2>
 
     <label for="recipeName">Nombre de la receta</label>
 
@@ -69,6 +72,9 @@
         id="recipeName"
         required
         placeholder="Ej. Lasaña de carne">
+
+    <label for="recipeServings">Raciones</label>
+    <input id="recipeServings" type="number" min="1" max="2147483647" step="1" value="2" required>
 
     <label id="recipeTypeLabel">Tipo de receta</label>
 
@@ -102,6 +108,8 @@
 
     </div>
 
+    <p id="typeChangeHint" class="form-hint hidden">Si cambias el tipo, la receta se retirará de las comidas o cenas del menú en las que ya no encaje.</p>
+
     <div class="ingredients-header">
 
         <h2>Ingredientes</h2>
@@ -112,6 +120,15 @@
 
     </div>
 
+    <h2>Preparación <small>(opcional)</small></h2>
+    <p class="form-hint">Enter avanza al siguiente paso; Mayús + Enter añade un salto de línea.</p>
+    <div id="preparationList"></div>
+    <button type="button" class="secondary" id="addStep">Añadir paso</button>
+
+    <label for="recipeNotes">Notas (opcional)</label>
+    <textarea id="recipeNotes" rows="3" placeholder="Consejos, variantes o comentarios personales"></textarea>
+    <p class="form-hint">En notas, Enter añade una línea. Usa Tab para llegar a Guardar receta y Enter para confirmar.</p>
+
     <button class="primary submitButton" type="submit">
 
         <span class="material-symbols-rounded">save</span>
@@ -120,7 +137,11 @@
 
     </button>
 
+    <a class="secondary cancel-recipe" href="recetas.html">Cancelar</a>
+    </fieldset>
+
 </form>
+<p id="formStatus" role="status" aria-live="polite"></p>
 
 </main>
 

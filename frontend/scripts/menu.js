@@ -8,6 +8,7 @@ const MEALS = [
 
 let currentEditSlot = null; // { day, meal }
 let allRecipesCache = [];
+let weeklyMenu = {};
 
 document.addEventListener("DOMContentLoaded", () => {
     loadWeeklyMenu();
@@ -61,6 +62,11 @@ function slotHtml(dayKey, meal, recipe) {
                 ${escapeHtml(name)}
                 <small>${count} ingredientes</small>
             </div>
+            ${recipe?.id ? `<div class="slot-people">Comensales
+                <input type="number" min="1" max="2147483647" step="1" required value="${recipe.people || recipe.servings || 2}"
+                    aria-label="Comensales de ${escapeHtml(dayKey)} ${meal.label.toLowerCase()}">
+                <button type="button" class="reset-people" title="Usar las raciones originales">Originales (${recipe.servings || 2})</button>
+            </div>` : ""}
         </div>
     `;
 }
@@ -78,15 +84,15 @@ async function loadWeeklyMenu() {
             api("/menu")
         ]);
         setDays(days);
+        weeklyMenu = menu;
 
-        // Sin el mínimo de recetas no se pinta el calendario ni el botón de regenerar.
-        // Es distinto de un fallo al cargar (ese cae en el catch).
-        if (!status.enough) {
+        // Un menú ya planificado sigue accesible aunque después se borren recetas.
+        if (!status.enough && !Object.values(menu).some(meals => Object.values(meals).some(r => r?.id))) {
             if (generateButton) generateButton.style.display = "none";
             grid.innerHTML = emptyStateHtml("No hay suficientes recetas");
             return;
         }
-        if (generateButton) generateButton.style.display = "";
+        if (generateButton) generateButton.style.display = status.enough ? "" : "none";
 
         grid.innerHTML = DAYS.map(day => {
             const meals = menu[day.key] || {};
@@ -152,6 +158,9 @@ async function openChooseRecipeModal(day, meal) {
     const dayLabel = document.getElementById("chooseRecipeDay");
     const searchInput = document.getElementById("recipeSearchInput");
     const list = document.getElementById("chooseRecipeList");
+    const people = document.getElementById("slotPeople");
+    people.value = weeklyMenu[day]?.[meal]?.people || "";
+    people.setCustomValidity("");
 
     dayLabel.textContent = `${capitalize(day)} (${mealLabel(meal).toLowerCase()})`;
     searchInput.value = "";
@@ -226,11 +235,13 @@ function renderChooseRecipeList(query) {
 async function selectRecipeForSlot(recipeId) {
     if (!currentEditSlot) return;
     const { day, meal } = currentEditSlot;
+    const input = document.getElementById("slotPeople");
+    if (!input.reportValidity()) return;
     try {
         await api(`/menu/${encodeURIComponent(day)}/${encodeURIComponent(meal)}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ recipe_id: recipeId })
+            body: JSON.stringify({ recipe_id: recipeId, people: input.value ? Number(input.value) : null })
         });
     } catch (e) {
         alert(e.message);
@@ -244,13 +255,25 @@ function setupWeekGridEvents() {
     const grid = document.getElementById("weekGrid");
     if (!grid) return;
 
-    grid.addEventListener("click", (e) => {
+    grid.addEventListener("click", async (e) => {
+        if (e.target.closest(".slot-people")) {
+            if (e.target.closest(".reset-people")) await updateSlotPeople(e.target.closest(".meal-slot"), null);
+            return;
+        }
         const slot = e.target.closest(".meal-slot");
         if (!slot) return;
         openChooseRecipeModal(slot.dataset.day, slot.dataset.meal);
     });
 
+    grid.addEventListener("change", async (e) => {
+        if (!e.target.matches(".slot-people input") || !e.target.reportValidity()) return;
+        await updateSlotPeople(e.target.closest(".meal-slot"), Number(e.target.value));
+    });
+    grid.addEventListener("keydown", e => {
+        if (e.key === "Enter" && e.target.matches(".slot-people input")) e.target.blur();
+    });
     grid.addEventListener("dragstart", (e) => {
+        if (e.target.closest(".slot-people")) { e.preventDefault(); return; }
         const slot = e.target.closest(".meal-slot");
         if (!slot) return;
         e.dataTransfer.effectAllowed = "move";
@@ -305,4 +328,17 @@ function setupWeekGridEvents() {
         }
         loadWeeklyMenu();
     });
+}
+
+async function updateSlotPeople(slot, people) {
+    const { day, meal } = slot.dataset;
+    const input = slot.querySelector("input");
+    input.disabled = true;
+    try {
+        await api(`/menu/${encodeURIComponent(day)}/${meal}`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ recipe_id: weeklyMenu[day][meal].id, people })
+        });
+    } catch (err) { alert("No se pudieron guardar los comensales: " + err.message); }
+    await loadWeeklyMenu();
 }

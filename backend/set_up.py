@@ -8,10 +8,10 @@ detecta que falta una tabla o que el esquema es de una versión anterior.
 Uso manual (opcional, la app también lo hace sola):
     python set_up.py
 
-Esquema (versión 3):
-    recipes           (id, name, type)             type: ambos | comida | cena | extra
+Esquema (versión 4):
+    recipes           (id, name, type, servings, preparation, notes)
     ingredients       (id, recipe_id, position, name, qty, unit)
-    menu              (day, meal, recipe_id)       meal: comida | cena
+    menu              (day, meal, recipe_id, people) meal: comida | cena
     shopping_checked  (name, unit)                 ingredientes ya comprados / en casa
 """
 
@@ -163,6 +163,20 @@ def create_tables():
             _migrate_to_v2(conn)
 
         conn.executescript(_schema_sql())
+
+        # Migración aditiva: conserva IDs, ingredientes, menú y marcas existentes.
+        recipe_cols = {r["name"] for r in conn.execute("PRAGMA table_info(recipes)")}
+        for column, definition in {
+            "servings": "INTEGER NOT NULL DEFAULT 2 CHECK (servings > 0)",
+            "preparation": "TEXT NOT NULL DEFAULT '[]'",
+            "notes": "TEXT NOT NULL DEFAULT ''",
+        }.items():
+            if column not in recipe_cols:
+                conn.execute(f"ALTER TABLE recipes ADD COLUMN {column} {definition}")
+        menu_cols = {r["name"] for r in conn.execute("PRAGMA table_info(menu)")}
+        if "people" not in menu_cols:
+            conn.execute("ALTER TABLE menu ADD COLUMN people INTEGER CHECK (people > 0)")
+
 
         # Una fila por cada día y comida (los 7 días), para poder activar más
         # días con MENU_DAYS sin tocar la base de datos.

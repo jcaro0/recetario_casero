@@ -174,3 +174,6 @@
     text-align: center;
     padding: 20px 0;
 }
+.slot-people { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; font-size: 13px; }
+.slot-people input { width: 64px; padding: 8px; border: 1px solid #E2D2BC; border-radius: 8px; background: var(--surface); color: var(--text); }
+.reset-people { background: transparent; color: var(--brown-dark); text-decoration: underline; padding: 6px; font-size: 12px; }
