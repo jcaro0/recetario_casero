@@ -156,31 +156,10 @@ def run():
                 }).map(el => ({tag: el.tagName, class: el.className, width: el.getBoundingClientRect().width}))""")
                 assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), overflow
                 assert not errors, errors
-                # Misma API y formularios, con protección activada.
-                from werkzeug.security import generate_password_hash
-                app.secret_key = 'temporary-browser-test-secret-' * 2
-                app.config['AUTH_PASSWORD_HASH'] = generate_password_hash('browser password', method='pbkdf2:sha256:600000')
-                app.config['AUTH_ENABLED'] = True
-                assert page.request.post(base + '/recipes', data={}).status == 403
-                page.goto(base + '/login.html')
-                page.locator('#password').fill('browser password')
-                page.locator('#login button').click()
-                page.wait_for_url(base + '/')
-                page.goto(base + f'/agregar_recetas.html?id={rich["id"]}')
-                expect(page.locator('#recipeFields')).to_be_enabled()
-                page.locator('#recipeNotes').fill('Guardado con sesión y CSRF')
-                page.locator('.submitButton').click()
-                page.wait_for_url('**/recetas.html')
-                assert page.request.get(base + f'/recipes/{rich["id"]}').json()['notes'] == 'Guardado con sesión y CSRF'
-                page.goto(base + '/login.html')
-                page.locator('#logout').click()
-                expect(page.locator('#status')).to_have_text('Sesión cerrada')
-                print('OK: acceso con contraseña, edición con sesión/CSRF y cierre de sesión')
                 assert not errors, errors
                 browser.close()
                 print("OK: formulario móvil sin desbordamiento; sin errores JavaScript")
         finally:
-            app.config['AUTH_ENABLED'] = False
             server.shutdown()
             thread.join()
             db.DB_PATH = original_path

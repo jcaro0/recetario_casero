@@ -16,9 +16,6 @@ FRONTEND_FOLDER = os.environ.get(
 
 app = Flask(__name__, static_folder=FRONTEND_FOLDER, static_url_path="")
 
-from security import install
-install(app)
-
 @app.before_request
 def validate_json_object():
     if request.is_json and not isinstance(request.get_json(silent=True), dict):

@@ -33,7 +33,7 @@ def run():
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
             port = sock.getsockname()[1]
-        env = dict(os.environ, DB_PATH=db.DB_PATH, VENV_DIR=str(venv), PORT=str(port), AUTH_CONFIG='', RECETARIO_ENV='')
+        env = dict(os.environ, DB_PATH=db.DB_PATH, VENV_DIR=str(venv), PORT=str(port), RECETARIO_ENV='')
         def start():
             return subprocess.Popen(['bash', str(repo / 'script.sh')], cwd='/tmp', env=env,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)

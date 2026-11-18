@@ -14,9 +14,6 @@ from unittest.mock import patch
 import backup
 import database as db
 import set_up
-from flask import Flask
-from security import install
-from werkzeug.security import generate_password_hash
 
 
 class OperationsTests(unittest.TestCase):
@@ -186,44 +183,6 @@ class OperationsTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(script), '--db', str(self.root / 'missing.db'), 'info'], capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.root / 'missing.db').exists())
-
-    def auth_app(self, enabled=True):
-        app = Flask('test')
-        auth = self.root / 'auth.json'
-        auth.write_text(json.dumps({'secret_key': 'x' * 64,
-                         'password_hash': generate_password_hash('test password', method='pbkdf2:sha256:600000')}))
-        with patch.dict(os.environ, {'AUTH_CONFIG': str(auth) if enabled else ''}):
-            install(app)
-        @app.route('/write', methods=['POST', 'PUT', 'PATCH', 'DELETE'])
-        def write():
-            return {'ok': True}
-        return app.test_client()
-
-    def test_auth_sessions_csrf_origins_logout(self):
-        client = self.auth_app()
-        headers = {'X-Recetario-Request': '1'}
-        self.assertEqual(client.post('/write', headers=headers).status_code, 401)
-        with patch('security.time.monotonic', return_value=100):
-            self.assertEqual(client.post('/auth/login', json={'password': 'wrong'}, headers=headers).status_code, 401)
-        with patch('security.time.monotonic', return_value=200):
-            response = client.post('/auth/login', json={'password': 'test password'}, headers=headers)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('HttpOnly', response.headers['Set-Cookie'])
-        self.assertIn('SameSite=Strict', response.headers['Set-Cookie'])
-        token = client.get('/auth/status').json['csrf']
-        self.assertEqual(client.post('/write', headers=headers).status_code, 403)
-        headers['X-CSRF-Token'] = token
-        for method in ('POST', 'PUT', 'PATCH', 'DELETE'):
-            self.assertEqual(client.open('/write', method=method, headers=headers).status_code, 200)
-        self.assertEqual(client.post('/write', headers=dict(headers, Origin='https://evil.example')).status_code, 403)
-        self.assertEqual(client.post('/auth/logout', headers=headers).status_code, 200)
-        self.assertEqual(client.post('/write', headers=headers).status_code, 401)
-
-    def test_disabled_auth_and_external_forms(self):
-        client = self.auth_app(False)
-        self.assertFalse(client.get('/auth/status').json['enabled'])
-        self.assertEqual(client.post('/write').status_code, 200)
-        self.assertEqual(client.post('/write', headers={'Origin': 'http://evil.example'}).status_code, 403)
 
     def test_first_deployment_copies_latest_25_and_refuses_overwrite(self):
         for index in range(24):

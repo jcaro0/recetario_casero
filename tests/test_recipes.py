@@ -241,6 +241,14 @@ class RecipeTests(unittest.TestCase):
         self.client.post('/shopping-list/check', json={'name':'Tomate', 'unit':'cdta', 'checked':True})
         self.assertFalse(next(i for i in self.client.get('/shopping-list').json if i['unit']=='g')['checked'])
 
+    def test_no_auth_and_malformed_requests(self):
+        self.assertEqual(self.client.get('/auth/status').status_code, 404)
+        self.assertEqual(self.client.get('/login.html').status_code, 404)
+        self.create()
+        for data in [[], 'texto', 3, True]:
+            self.assertEqual(self.client.post('/recipes', json=data).status_code, 400)
+        self.assertEqual(self.client.post('/recipes', data='{', content_type='application/json').status_code, 400)
+
     def test_migrate_v4_with_verified_backup(self):
         recipe = self.create()
         self.plan(recipe, people=4)
