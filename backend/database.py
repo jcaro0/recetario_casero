@@ -52,8 +52,8 @@ MEALS = ["comida", "cena"]
 RECIPE_TYPES = ["ambos", "comida", "cena", "extra"]
 
 # Versión del esquema (PRAGMA user_version). La define el esquema, no set_up.
-SCHEMA_VERSION = 4
-REQUIRED_TABLES = ("recipes", "ingredients", "menu", "shopping_checked")
+SCHEMA_VERSION = 5
+REQUIRED_TABLES = ("recipes", "ingredients", "menu", "shopping_checked", "settings")
 
 
 # ---------------------------------------------------------
@@ -90,6 +90,7 @@ def _needs_setup():
                 'ingredients': {'id', 'recipe_id', 'position', 'name', 'qty', 'unit'},
                 'menu': {'day', 'meal', 'recipe_id', 'people'},
                 'shopping_checked': {'name', 'unit'},
+                'settings': {'key', 'value'},
             }
             for table, columns in expected.items():
                 actual = {r['name'] for r in conn.execute(f'PRAGMA table_info({table})')}
@@ -384,7 +385,7 @@ def set_menu_slot(day, meal, recipe_id, people=None):
         )
 
 
-def replace_menu(assignments):
+def replace_menu(assignments, people=None):
     """
     Vacía el menú y asigna {(dia, comida): recipe_id} de golpe (una transacción).
     Al ser un menú nuevo, también se desmarca la lista de la compra.
@@ -392,10 +393,31 @@ def replace_menu(assignments):
     with connection() as conn:
         conn.execute("UPDATE menu SET recipe_id = NULL, people = NULL")
         conn.executemany(
-            "UPDATE menu SET recipe_id = ? WHERE day = ? AND meal = ?",
-            [(rid, day, meal) for (day, meal), rid in assignments.items()],
+            "UPDATE menu SET recipe_id = ?, people = ? WHERE day = ? AND meal = ?",
+            [(rid, people, day, meal) for (day, meal), rid in assignments.items()],
         )
         conn.execute("DELETE FROM shopping_checked")
+        if people is not None:
+            _save_week_people(conn, people)
+
+
+def get_week_people():
+    with connection() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key='week_people'").fetchone()
+    return int(row[0]) if row else 2
+
+
+def _save_week_people(conn, people):
+    conn.execute("INSERT INTO settings(key,value) VALUES ('week_people',?) "
+                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(people),))
+
+
+def set_week_people(people):
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        _save_week_people(conn, people)
+        conn.executemany("UPDATE menu SET people=? WHERE day=? AND meal=?",
+                         [(people, d, m) for d in ALL_DAYS for m in MEALS])
 
 
 def swap_menu_slots(day1, meal1, day2, meal2):

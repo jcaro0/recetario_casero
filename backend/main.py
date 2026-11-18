@@ -115,9 +115,25 @@ def api_generate_menu():
     if not db.menu_status()["enough"]:
         return jsonify({"error": "No hay suficientes recetas"}), 400
 
-    db.replace_menu(build_random_menu(db.get_all_recipes()))
+    data = request.get_json(silent=True) or {}
+    people = data.get("people", db.get_week_people())
+    if not positive_integer(people):
+        return jsonify(error="Los comensales deben ser un entero positivo"), 400
+    db.replace_menu(build_random_menu(db.get_all_recipes()), people)
 
     return jsonify({"ok": True})
+
+
+@app.route("/menu/people", methods=["GET", "POST"])
+def api_week_people():
+    if request.method == "GET":
+        return jsonify(people=db.get_week_people())
+    data = request.get_json(silent=True) or {}
+    people = data.get("people", db.get_week_people())
+    if not positive_integer(people):
+        return jsonify(error="Los comensales deben ser un entero positivo"), 400
+    db.set_week_people(people)
+    return jsonify(people=people)
 
 
 @app.route("/menu/swap", methods=["POST"])
@@ -163,7 +179,7 @@ def api_set_menu_slot(day, meal):
                      f"no se puede poner en la {meal}."
         }), 400
 
-    people = data.get("people")
+    people = data.get("people", db.get_week_people())
     if people is not None and not positive_integer(people):
         return jsonify({"error": "Los comensales deben ser un entero positivo"}), 400
     db.set_menu_slot(day, meal, recipe["id"], people)

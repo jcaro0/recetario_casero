@@ -8,11 +8,12 @@ la administración explícita. La API nunca aplica migraciones.
 Uso manual (con la aplicación detenida):
     python manage.py migrate
 
-Esquema (versión 4):
+Esquema (versión 5):
     recipes           (id, name, type, servings, preparation, notes)
     ingredients       (id, recipe_id, position, name, qty, unit)
     menu              (day, meal, recipe_id, people) meal: comida | cena
     shopping_checked  (name, unit)                 ingredientes ya comprados / en casa
+    settings          (key, value)                 preferencias de la semana
 """
 
 from database import (
@@ -85,6 +86,8 @@ def _schema_sql():
     -- La lista en sí se calcula al vuelo a partir del menú; aquí solo se guarda
     -- la marca. Clave = (nombre normalizado, unidad); '' significa "sin unidad".
     -- Se vacía al generar un menú nuevo.
+    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
     CREATE TABLE IF NOT EXISTS shopping_checked (
         name TEXT NOT NULL,
         unit TEXT NOT NULL DEFAULT '',

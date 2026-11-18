@@ -79,6 +79,12 @@
 
         <p>Comidas y cenas se generan automáticamente y no se repiten mientras haya recetas suficientes.</p>
 
+        <form id="weekPeopleForm" class="week-people">
+            <label for="weekPeople">Comensales de la semana</label>
+            <input id="weekPeople" type="number" min="1" max="2147483647" step="1" required value="2">
+            <button class="secondary" type="submit">Aplicar a todo el menú</button>
+            <span id="weekPeopleStatus" role="status"></span>
+        </form>
         <button class="primary" id="generateButton">
             <span class="material-symbols-rounded">autorenew</span>
             Regenerar menú
@@ -146,6 +152,9 @@
             El menú actual se sustituirá por otro completamente aleatorio.
         </p>
 
+        <label for="generatePeople">¿Para cuántas personas?</label>
+        <input id="generatePeople" type="number" min="1" max="2147483647" step="1" required value="2">
+        <p id="generateStatus" role="status"></p>
         <div class="modal-buttons">
 
             <button class="secondary" id="cancelModal">

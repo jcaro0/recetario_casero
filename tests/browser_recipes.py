@@ -123,7 +123,7 @@ def run():
                 assert len(edited["ingredients"]) == 2 and edited["ingredients"][0]["qty"] == 300
                 print("OK: editar guarda el mismo ID y persiste tras recargar")
 
-                page.request.post(base + "/menu/lunes/comida", data={"recipe_id": rich["id"]})
+                page.request.post(base + "/menu/lunes/comida", data={"recipe_id": rich["id"], "people": None})
                 page.goto(base + "/menu.html")
                 slot = page.locator('.meal-slot[data-day="lunes"][data-meal="comida"]')
                 expect(slot.locator("input")).to_have_value("4")

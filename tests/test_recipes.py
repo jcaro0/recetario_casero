@@ -136,12 +136,68 @@ class RecipeTests(unittest.TestCase):
         menu = self.client.get("/menu").json
         slots = [recipe for meals in menu.values() for recipe in meals.values()]
         self.assertEqual(len({recipe["id"] for recipe in slots}), len(db.DAYS) * 2)
-        self.assertTrue(all(recipe["people"] is None for recipe in slots))
+        self.assertTrue(all(recipe["people"] == 2 for recipe in slots))
         recipe = menu["lunes"]["cena"]
         recipe["type"] = "comida"
         self.assertEqual(self.client.put(f'/recipes/{recipe["id"]}', json=recipe).status_code, 200)
         self.assertIsNone(self.client.get("/menu").json["lunes"]["cena"]["name"])
         self.assertIsNotNone(self.client.get("/menu").json["lunes"]["comida"]["name"])
+
+    def test_week_people_generate_bulk_persist_and_empty_slots(self):
+        self.assertEqual(self.client.get('/menu/people').json, {'people': 2})
+        for index in range(len(db.DAYS) * 2):
+            self.create(name=f'Plato {index}')
+        for value in [0, -1, 1.5, True, "3", None]:
+            self.assertEqual(self.client.post('/menu/people', json={'people': value}).status_code, 400)
+            self.assertEqual(self.client.post('/menu/generate', json={'people': value}).status_code, 400)
+        self.assertEqual(self.client.post('/menu/generate', json={'people': 3}).status_code, 200)
+        before = self.client.get('/menu').json
+        self.assertTrue(all(r['people'] == 3 for meals in before.values() for r in meals.values()))
+        self.assertEqual(self.client.post('/menu/people', json={'people': 5}).status_code, 200)
+        after = self.client.get('/menu').json
+        for day in before:
+            for meal in db.MEALS:
+                self.assertEqual(before[day][meal]['id'], after[day][meal]['id'])
+                self.assertEqual(after[day][meal]['people'], 5)
+        db._ready = False
+        self.assertEqual(self.client.get('/menu/people').json['people'], 5)
+        recipe = after['lunes']['comida']
+        self.plan(recipe, people=1)
+        self.assertEqual(self.client.get('/menu/people').json['people'], 5)
+        # Sin people, una nueva asignación hereda la preferencia semanal.
+        self.client.post('/menu/lunes/cena', json={'recipe_id': recipe['id']})
+        self.assertEqual(self.client.get('/menu').json['lunes']['cena']['people'], 5)
+        self.client.post('/menu/generate')
+        self.assertTrue(all(r['people'] == 5 for meals in self.client.get('/menu').json.values() for r in meals.values()))
+
+    def test_week_bulk_rolls_back_on_sql_failure(self):
+        import sqlite3
+        with db.connection() as conn:
+            conn.execute("CREATE TRIGGER fail_people BEFORE UPDATE OF people ON menu "
+                         "WHEN NEW.day='martes' BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        before = db.read_menu()
+        with self.assertRaises(sqlite3.IntegrityError):
+            db.set_week_people(7)
+        self.assertEqual(db.read_menu(), before)
+        self.assertEqual(db.get_week_people(), 2)
+
+    def test_migrate_v4_with_verified_backup(self):
+        recipe = self.create()
+        self.plan(recipe, people=4)
+        self.client.post('/shopping-list/check', json={'name':'arroz','unit':'g','checked':True})
+        with db.connection() as conn:
+            conn.execute('DROP TABLE settings')
+            conn.execute('PRAGMA user_version=4')
+        db._ready = False
+        with self.assertRaises(RuntimeError):
+            db.get_all_recipes()
+        import set_up
+        set_up.create_tables()
+        self.assertEqual(db.get_recipe(recipe['id']), recipe)
+        self.assertEqual(db.get_week_people(), 2)
+        self.assertEqual(db.get_menu()['lunes']['comida']['people'], 4)
+        self.assertTrue(next(i for i in db.get_shopping_list() if i['name']=='Arroz')['checked'])
+        self.assertTrue(os.listdir(os.environ['BACKUP_DIR']))
 
     def test_migrate_v3_preserves_data_and_is_idempotent(self):
         os.unlink(db.DB_PATH)  # exclusivamente el archivo de TemporaryDirectory
@@ -167,7 +223,7 @@ class RecipeTests(unittest.TestCase):
         set_up.create_tables()
         self.assertEqual(self.client.get('/recipes/41').json, recipe)
         with db.connection() as conn:
-            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 4)
+            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION)
             self.assertEqual(conn.execute("SELECT id FROM ingredients").fetchone()[0], 7)
 
 

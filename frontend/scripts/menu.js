@@ -9,10 +9,25 @@ const MEALS = [
 let currentEditSlot = null; // { day, meal }
 let allRecipesCache = [];
 let weeklyMenu = {};
+let weekPeople = 2;
 
 document.addEventListener("DOMContentLoaded", () => {
     loadWeeklyMenu();
     setupModal();
+    document.getElementById("weekPeopleForm").onsubmit = async e => {
+        e.preventDefault();
+        const input = document.getElementById("weekPeople");
+        if (!input.reportValidity()) return;
+        const button = e.currentTarget.querySelector("button");
+        button.disabled = true;
+        try {
+            const result = await api("/menu/people", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({people:Number(input.value)})});
+            weekPeople = result.people;
+            document.getElementById("weekPeopleStatus").textContent = "Comensales actualizados";
+            await loadWeeklyMenu();
+        } catch (err) { document.getElementById("weekPeopleStatus").textContent = err.message; }
+        finally { button.disabled = false; }
+    };
     setupChooseRecipeModal();
     setupWeekGridEvents();
 });
@@ -78,13 +93,15 @@ async function loadWeeklyMenu() {
     grid.innerHTML = "<p>Cargando menú...</p>";
     try {
         // Peticiones en paralelo: días, ¿hay recetas suficientes? y menú
-        const [days, status, menu] = await Promise.all([
+        const [days, status, menu, settings] = await Promise.all([
             api("/days"),
             api("/menu/status"),
-            api("/menu")
+            api("/menu"), api("/menu/people")
         ]);
         setDays(days);
         weeklyMenu = menu;
+        weekPeople = settings.people;
+        document.getElementById("weekPeople").value = weekPeople;
 
         // Un menú ya planificado sigue accesible aunque después se borren recetas.
         if (!status.enough && !Object.values(menu).some(meals => Object.values(meals).some(r => r?.id))) {
@@ -122,15 +139,25 @@ function setupModal() {
     const cancel = document.getElementById("cancelModal");
     const confirm = document.getElementById("confirmModal");
 
-    open.onclick = () => modal.classList.remove("hidden");
+    const people = document.getElementById("generatePeople");
+    open.onclick = () => {
+        people.value = weekPeople;
+        modal.classList.remove("hidden");
+        people.focus();
+    };
+    modal.addEventListener("click", e => { if (e.target === modal) cancel.click(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") { cancel.click(); closeChooseRecipeModal(); } });
     cancel.onclick = () => modal.classList.add("hidden");
     confirm.onclick = async () => {
-        modal.classList.add("hidden");
+        if (!people.reportValidity()) return;
+        confirm.disabled = true;
         try {
-            await api("/menu/generate", { method: "POST" });
+            await api("/menu/generate", { method: "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({people:Number(people.value)}) });
+            modal.classList.add("hidden");
         } catch (e) {
             alert("No se pudo regenerar el menú: " + e.message);
         }
+        confirm.disabled = false;
         loadWeeklyMenu();
     };
 }
@@ -159,7 +186,7 @@ async function openChooseRecipeModal(day, meal) {
     const searchInput = document.getElementById("recipeSearchInput");
     const list = document.getElementById("chooseRecipeList");
     const people = document.getElementById("slotPeople");
-    people.value = weeklyMenu[day]?.[meal]?.people || "";
+    people.value = weeklyMenu[day]?.[meal]?.people || weekPeople;
     people.setCustomValidity("");
 
     dayLabel.textContent = `${capitalize(day)} (${mealLabel(meal).toLowerCase()})`;
