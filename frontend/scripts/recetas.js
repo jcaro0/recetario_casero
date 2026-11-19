@@ -2,6 +2,7 @@ let catalogRecipes = [];
 const searchKey = value => String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 document.addEventListener("DOMContentLoaded", () => {
     loadRecipesView();
+    document.addEventListener("recetario:refreshed", loadRecipesView);
     setupRecipeExpansion();
     byId("catalogSearch").addEventListener("input", renderRecipes);
 });
@@ -16,8 +17,8 @@ async function loadRecipesView() {
             return;
         }
         renderRecipes();
-    } catch {
-        list.innerHTML = "<p>Error al cargar las recetas.</p>";
+    } catch (error) {
+        list.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
     }
 }
 
@@ -36,9 +37,9 @@ function renderRecipes() {
                         ${typeBadge(recipe.type)}
                     </div>
                 </div>
-                <a class="editRecipe" href="agregar_recetas.html?id=${recipe.id}" aria-label="Editar ${escapeHtml(recipe.name)}">Editar</a>
+                <a class="editRecipe" data-write href="agregar_recetas.html?id=${recipe.id}" aria-label="Editar ${escapeHtml(recipe.name)}">Editar</a>
                 <button aria-label="Eliminar ${escapeHtml(recipe.name)}"
-                    class="deleteRecipe"
+                    class="deleteRecipe" data-write
                     onclick="deleteRecipe(${recipe.id})">
                     <span class="material-symbols-rounded">delete</span>
                 </button>
@@ -52,6 +53,7 @@ function renderRecipes() {
                 </div>
             </div>
         `).join("");
+    applyWriteAccess();
 }
 
 function setupRecipeExpansion() {
@@ -66,7 +68,7 @@ function setupRecipeExpansion() {
 }
 
 async function deleteRecipe(id) {
-    if (!confirm("¿Eliminar receta?")) return;
+    if (!canWrite() || !confirm("¿Eliminar receta?")) return;
     try {
         await api(`/recipes/${id}`, "DELETE");
     } catch (e) {

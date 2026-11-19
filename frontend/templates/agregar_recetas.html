@@ -14,9 +14,9 @@
 
 </section>
 
-<form id="recipeForm" class="recipe-form">
+<form id="recipeForm" class="recipe-form" autocomplete="off">
 
-    <fieldset id="recipeFields" disabled>
+    <fieldset id="recipeFields" data-write disabled>
     <h2>Datos generales</h2>
 
     <label for="recipeName">Nombre de la receta</label>
@@ -100,7 +100,7 @@
 
 <!-- Modal: ya existe una receta con los mismos ingredientes -->
 
-<div id="duplicateModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="duplicateModalText">
+<div id="duplicateModal" class="modal hidden" data-write role="dialog" aria-modal="true" aria-labelledby="duplicateModalText">
 
     <div class="modal-content">
 

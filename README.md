@@ -537,12 +537,13 @@ Mantén ambos puertos en la red local y evita redirecciones desde Internet. Si
 ya tienes un proxy local, puedes reutilizarlo. El siguiente ejemplo usa
 `192.168.1.50`. Sustitúyela por la IP de tu Raspberry.
 
-En un ordenador de confianza, crea una autoridad privada y un certificado de
-servidor con esa IP en el SAN. Conserva `ca.key` cifrada en el ordenador.
+En un ordenador de confianza, fuera del repositorio, crea una autoridad privada
+y un certificado de servidor con esa IP en el SAN. Conserva `ca.key` cifrada en
+el ordenador.
 
 ```sh
-mkdir -m 700 recetario-tls
-cd recetario-tls
+mkdir -m 700 "$HOME/recetario-tls"
+cd "$HOME/recetario-tls"
 umask 077
 RECETARIO_IP=192.168.1.50
 
@@ -590,3 +591,28 @@ instalar Recetario. [Apple y certificados instalados manualmente](https://suppor
 Las pruebas automatizadas comprueban Chromium en escritorio y resolución móvil.
 En cada teléfono quedan por verificar la instalación, el icono, la apertura
 desde la pantalla de inicio y el acceso al proxy por HTTPS.
+
+### Consultar sin conexión
+
+Abre Recetario al menos una vez con conexión en la **misma URL HTTPS y en la misma
+aplicación o perfil de navegador** que usarás fuera de casa. Descarga una copia
+de recetas, menú y compra, incluidos los productos manuales y sus marcas. En
+iPhone es recomendable abrir la aplicación desde el icono con conexión antes
+de salir, porque puede usar almacenamiento distinto al de Safari.
+
+Al perder contacto con la Raspberry aparece **Sin conexión · Modo de solo
+lectura** debajo de la cabecera. Puedes navegar, buscar y leer la última copia.
+Si aún no la has descargado, la pantalla indica que faltan datos. Si el navegador
+borra los datos del sitio, tendrás que descargar la copia de nuevo.
+
+Al volver a la app o recuperar la red, Recetario comprueba el servidor y descarga
+una lectura nueva de SQLite antes de habilitar las operaciones. Mientras la app
+está visible, también comprueba periódicamente la respuesta del servidor. Si la
+actualización de datos falla, la pantalla conserva la última copia y sigue en
+solo lectura. Cuando la descarga termina, **Ya tienes conexión** aparece unos
+segundos. Los cambios que hagan otras personas se leen del servidor.
+
+Cache API conserva los recursos de la interfaz. IndexedDB guarda una sola copia
+de consulta, generada únicamente con respuestas correctas del servidor. Recetario
+comprueba la conexión antes de enviar una modificación y jamás aplaza ni reintenta
+escrituras. SQLite es la única fuente de datos modificables.

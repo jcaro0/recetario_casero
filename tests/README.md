@@ -82,3 +82,16 @@ Docker real. Consulta README.md antes de actualizar cualquiera de esas instalaci
 La copia semanal mediante `deploy/backup-weekly.sh` se prueba desde otro directorio,
 con un archivo de configuración temporal. Tras tres ejecuciones quedan las dos
 últimas copias válidas; si falta la base activa no se purgan los respaldos existentes.
+
+## Compra manual, PWA y solo lectura
+
+La suite de backend prueba la migración 5 → 6, la independencia de los productos
+manuales y la instantánea de consulta de SQLite. El arranque comprueba la
+persistencia tras reiniciar Waitress.
+
+Chromium prueba en escritorio y móvil la compra manual y la PWA. Simula publicar
+nuevos recursos, desconectar la red, reabrir con la caché, perder solo el acceso
+al servidor y recuperar la conexión. Comprueba también que un fallo de descarga
+mantiene bloqueada la escritura y que la reconexión muestra los cambios de otra
+sesión. Se usan únicamente bases SQLite temporales. La instalación real en
+Android e iPhone y el HTTPS de la Raspberry se comprueban por separado.

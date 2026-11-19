@@ -79,12 +79,28 @@ def api_days():
     return jsonify(db.DAYS)
 
 
+def menu_response(menu):
+    return {
+        day: {meal: recipe or {"name": None, "ingredients": []} for meal, recipe in meals.items()}
+        for day, meals in menu.items()
+    }
+
+
 @app.get("/menu")
 def api_get_menu():
-    return jsonify({
-        day: {meal: recipe or {"name": None, "ingredients": []} for meal, recipe in meals.items()}
-        for day, meals in db.get_menu().items()
-    })
+    return jsonify(menu_response(db.get_menu()))
+
+
+@app.get("/connection")
+def api_connection():
+    return jsonify(ok=True), 200, {"Cache-Control": "no-store"}
+
+
+@app.get("/snapshot")
+def api_snapshot():
+    data = db.read_snapshot()
+    data["menu"] = menu_response(data["menu"])
+    return jsonify(data), 200, {"Cache-Control": "no-store"}
 
 
 @app.get("/menu/status")

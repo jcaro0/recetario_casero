@@ -9,11 +9,13 @@ document.addEventListener("DOMContentLoaded", () => {
     byId("manualCancel").onclick = resetManualForm;
     setupShareDropdown(shareShopping);
     loadShoppingList();
+    document.addEventListener("recetario:refreshed", loadShoppingList);
+    document.addEventListener("recetario:locked", resetManualForm);
 });
 
-async function loadShoppingList() {
+async function loadShoppingList(showLoading = true) {
     const container = byId("shoppingList");
-    container.innerHTML = "<p>Cargando...</p>";
+    if (showLoading) container.innerHTML = "<p>Cargando...</p>";
     try {
         const [menu, shopping] = await Promise.all([
             api("/menu"),
@@ -30,8 +32,8 @@ async function loadShoppingList() {
 
         shoppingItems = shopping;
         renderShoppingList();
-    } catch {
-        container.innerHTML = "<p>Error al cargar.</p>";
+    } catch (error) {
+        container.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
     }
 }
 
@@ -44,18 +46,19 @@ function renderShoppingList() {
     const row = (item, index) => `
         <div class="shopping-item${item.checked ? " checked" : ""}" data-index="${index}">
             <label class="shopping-details">
-                <input type="checkbox"${item.checked ? " checked" : ""}>
+                <input type="checkbox" data-write${item.checked ? " checked" : ""}>
                 <span class="shopping-info"><strong>${escapeHtml(item.name)}</strong>
                 <span>${escapeHtml(shoppingAmount(item))}</span></span>
             </label>
             ${item.manual_id ? `<div class="manual-actions">
-                <button type="button" data-action="edit" aria-label="Editar ${escapeHtml(item.name)}">Editar</button>
-                <button type="button" data-action="delete" aria-label="Eliminar ${escapeHtml(item.name)}">Eliminar</button>
+                <button type="button" data-write data-action="edit" aria-label="Editar ${escapeHtml(item.name)}">Editar</button>
+                <button type="button" data-write data-action="delete" aria-label="Eliminar ${escapeHtml(item.name)}">Eliminar</button>
             </div>` : ""}
         </div>`;
     const group = checked => shoppingItems.map((item, index) => item.checked === checked ? row(item, index) : "").join("");
     container.innerHTML = group(false) + (shoppingItems.some(i => i.checked) ?
         '<h2 class="purchased-divider">Ya comprados</h2>' + group(true) : "");
+    applyWriteAccess();
 }
 
 function resetManualForm() {
@@ -68,6 +71,7 @@ function resetManualForm() {
 
 async function saveManualProduct(event) {
     event.preventDefault();
+    if (!canWrite()) return;
     const button = byId("manualSubmit");
     const data = Object.fromEntries(new FormData(event.currentTarget));
     button.disabled = true;
@@ -86,7 +90,7 @@ async function saveManualProduct(event) {
 
 async function onProductAction(event) {
     const button = event.target.closest("[data-action]");
-    if (!button) return;
+    if (!button || !canWrite()) return;
     const item = shoppingItems[Number(button.closest(".shopping-item").dataset.index)];
     if (button.dataset.action === "edit") {
         editingProduct = item.manual_id;
@@ -117,27 +121,29 @@ async function onToggleItem(e) {
     const item = shoppingItems[Number(row.dataset.index)];
     if (!item) return;
 
+    if (!canWrite()) {
+        box.checked = item.checked;
+        return;
+    }
     const checked = box.checked;
+    // Deja la última marca del servidor visible hasta confirmar la operación.
+    box.checked = item.checked;
     shoppingSaving = true;
     document.querySelectorAll(".shopping-item input").forEach(input => input.disabled = true);
     try {
         if (item.manual_id) {
             await api(`/shopping-list/manual/${item.manual_id}`, "PATCH", { checked });
-            item.checked = checked;
         } else {
             await api("/shopping-list/check", "POST", { name: item.name, unit: item.unit, checked });
-            shoppingItems.forEach(i => {
-                if (!i.manual_id && i.name === item.name && i.unit === item.unit) i.checked = checked;
-            });
         }
-        // Reordena al terminar la petición y después del gesto sobre la casilla.
-        renderShoppingList();
+        await loadShoppingList(false);
     } catch (err) {
         box.checked = item.checked;
         alert("No se pudo guardar: " + err.message);
     } finally {
         shoppingSaving = false;
         document.querySelectorAll(".shopping-item input").forEach(input => input.disabled = false);
+        applyWriteAccess();
     }
 }
 
@@ -155,7 +161,7 @@ async function shareShopping(type) {
             const mark = item.checked ? "✅" : "•";
             text += qty ? `${mark} ${item.name} (${qty})\n` : `${mark} ${item.name}\n`;
         });
-        shareText(text, type, "Lista de la compra");
+        await shareText(text, type, "Lista de la compra");
     } catch (e) {
         alert("No se pudo compartir la lista: " + e.message);
     }

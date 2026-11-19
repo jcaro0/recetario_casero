@@ -15,11 +15,11 @@
 
         <form id="weekPeopleForm" class="week-people">
             <label for="weekPeople">Comensales de la semana</label>
-            <input id="weekPeople" type="number" min="1" max="2147483647" step="1" required value="2">
-            <button class="secondary" type="submit">Aplicar a todo el menú</button>
+            <input id="weekPeople" data-write type="number" min="1" max="2147483647" step="1" required value="2">
+            <button class="secondary" type="submit" data-write>Aplicar a todo el menú</button>
             <span id="weekPeopleStatus" role="status"></span>
         </form>
-        <button class="primary" id="generateButton">
+        <button class="primary" id="generateButton" data-write>
             <span class="material-symbols-rounded">autorenew</span>
             Regenerar menú
         </button>
@@ -37,7 +37,7 @@
 
 <!-- Modal: elegir receta para una comida o cena -->
 
-<div id="chooseRecipeModal" class="modal hidden">
+<div id="chooseRecipeModal" class="modal hidden" data-write>
 
     <div class="modal-content big">
 
@@ -72,7 +72,7 @@
 
 <!-- Modal -->
 
-<div id="modal" class="modal hidden">
+<div id="modal" class="modal hidden" data-write>
 
     <div class="modal-content">
 

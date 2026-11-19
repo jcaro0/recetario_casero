@@ -323,6 +323,25 @@ class RecipeTests(unittest.TestCase):
         self.assertEqual(verify(backups[0])["version"], 5)
         self.assertEqual(self.client.post("/shopping-list/manual", json={"name": "Leche"}).status_code, 201)
 
+    def test_snapshot_contains_fresh_recipe_menu_and_manual_shopping(self):
+        recipe = self.create()
+        self.plan(recipe, people=5)
+        self.client.post("/menu/people", json={"people": 3})
+        self.client.post("/shopping-list/manual", json={"name": "Pan"})
+        response = self.client.get("/snapshot")
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        snapshot = response.json
+        self.assertEqual(snapshot["recipes"], self.client.get("/recipes").json)
+        self.assertEqual(snapshot["menu"], self.client.get("/menu").json)
+        self.assertEqual(snapshot["shopping"], self.client.get("/shopping-list").json)
+        self.assertEqual(snapshot["shopping"][-1]["name"], "Pan")
+        self.assertEqual(snapshot["people"], 3)
+        self.assertEqual(snapshot["days"], self.client.get("/days").json)
+        self.assertEqual(snapshot["status"], self.client.get("/menu/status").json)
+        connection = self.client.get("/connection")
+        self.assertEqual(connection.json, {"ok": True})
+        self.assertEqual(connection.headers["Cache-Control"], "no-store")
+
     def test_migrate_v4_with_verified_backup(self):
         recipe = self.create()
         self.plan(recipe, people=4)

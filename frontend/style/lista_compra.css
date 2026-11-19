@@ -52,9 +52,18 @@
 .manual-form {
     display: flex;
     flex-wrap: wrap;
-    align-items: end;
     gap: 10px;
     margin: 0 0 20px;
+}
+
+.manual-form fieldset {
+    display: flex;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    min-width: 0;
+    border: 0;
 }
 
 .manual-form label {

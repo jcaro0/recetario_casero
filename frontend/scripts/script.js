@@ -46,10 +46,10 @@ function dismissModalOnBackdropOrEscape(id, close) {
     });
 }
 
-function shareText(text, type, subject) {
+async function shareText(text, type, subject) {
     switch (type) {
         case "copy":
-            navigator.clipboard.writeText(text);
+            await navigator.clipboard.writeText(text);
             alert("Copiado al portapapeles");
             break;
         case "whatsapp":
@@ -76,19 +76,6 @@ function escapeHtml(value) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
-}
-
-// fetch + JSON que lanza un Error con el mensaje del servidor si la respuesta no es OK
-async function api(url, method = "GET", body) {
-    const options = { method };
-    if (body !== undefined) {
-        options.headers = { "Content-Type": "application/json" };
-        options.body = JSON.stringify(body);
-    }
-    const res = await fetch(url, options);
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.error || "Error del servidor");
-    return data;
 }
 
 // Etiqueta visual del tipo de receta
