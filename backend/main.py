@@ -1,4 +1,6 @@
 import os
+import sqlite3
+import sys
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 
@@ -211,8 +213,24 @@ def api_delete_recipe(recipe_id):
     return jsonify(ok=True)
 
 
+def main():
+    from waitress import serve
+
+    try:
+        db._ensure_ready()
+        port = int(os.environ.get("PORT", "8000"))
+    except (OSError, ValueError, RuntimeError, sqlite3.Error) as error:
+        sys.exit(f"ERROR al arrancar: {error}")
+
+    print(f"Recetario: DB_PATH={db.DB_PATH}; puerto={port}", flush=True)
+    try:
+        serve(app, host="0.0.0.0", port=port, threads=2,
+              connection_limit=32, channel_timeout=30, max_request_body_size=1024 * 1024)
+    except PermissionError:
+        sys.exit("ERROR: sin permiso para escuchar. Para puerto 80 usa systemd con CAP_NET_BIND_SERVICE.")
+    except Exception as error:
+        sys.exit(f"ERROR al arrancar: {error}")
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
-    db._ensure_ready()  # falla antes de escuchar si falta la base o requiere migración
-    app.run(host="0.0.0.0", port=port, debug=debug_mode)
+    main()

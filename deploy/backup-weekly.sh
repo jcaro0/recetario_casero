@@ -13,4 +13,4 @@ VENV_DIR=${VENV_DIR:-$REPO_DIR/.venv}
 [ -x "$VENV_DIR/bin/python" ] || { echo 'ERROR: ejecuta despliegue_raspberry.sh install primero.' >&2; exit 1; }
 : "${DB_PATH:?Configura DB_PATH en recetario.env}"
 : "${BACKUP_DIR:?Configura BACKUP_DIR en recetario.env}"
-exec "$VENV_DIR/bin/python" "$REPO_DIR/backend/manage.py" backup --label weekly --retain "${BACKUP_RETAIN:-2}"
+exec "$VENV_DIR/bin/python" "$REPO_DIR/backend/manage.py" backup --label weekly

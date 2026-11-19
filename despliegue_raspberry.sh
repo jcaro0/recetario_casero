@@ -31,25 +31,16 @@ if [ -n "${RECETARIO_ENV:-}" ]; then
 fi
 VENV_DIR="${VENV_DIR:-$SCRIPT_DIR/.venv}"
 export PORT="${PORT:-80}"
-export FRONTEND_FOLDER="${FRONTEND_FOLDER:-$SCRIPT_DIR/frontend}"
-export FLASK_DEBUG="${FLASK_DEBUG:-0}"
 # Conserva la ruta histórica de Raspberry, sin seleccionar la base de Docker.
 export DB_PATH="${DB_PATH:-$SCRIPT_DIR/data/recetario.db}"
-[[ "$DB_PATH" = /* ]] || fail 'DB_PATH debe ser absoluto.'
-command -v python3 >/dev/null || fail 'Instala python3 y python3-venv.'
-case "${1:-start}" in
-    install)
-        [ -x "$VENV_DIR/bin/python" ] || python3 -m venv "$VENV_DIR"
-        "$VENV_DIR/bin/python" -m pip install -r "$BACKEND_DIR/requirements.txt"
-        cp "$BACKEND_DIR/requirements.txt" "$VENV_DIR/recetario-requirements.txt"
-        echo 'Dependencias listas. Configura DB_PATH antes de iniciar.'
-        exit 0 ;;
-    start) ;;
-esac
+if [ "${1:-start}" = install ]; then
+    command -v python3 >/dev/null || fail 'Instala python3 y python3-venv.'
+    [ -x "$VENV_DIR/bin/python" ] || python3 -m venv "$VENV_DIR"
+    "$VENV_DIR/bin/python" -m pip install -r "$BACKEND_DIR/requirements.txt"
+    cp "$BACKEND_DIR/requirements.txt" "$VENV_DIR/recetario-requirements.txt"
+    echo 'Dependencias listas. Configura DB_PATH antes de iniciar.'
+    exit 0
+fi
 [ -x "$VENV_DIR/bin/python" ] || fail 'Ejecuta primero ./despliegue_raspberry.sh install'
 cmp -s "$BACKEND_DIR/requirements.txt" "$VENV_DIR/recetario-requirements.txt" || fail 'Dependencias cambiadas: ejecuta ./despliegue_raspberry.sh install'
-[ -f "$DB_PATH" ] || fail "Base ausente: $DB_PATH. Revisa la ruta; solo para una instalación NUEVA usa manage.py init."
-cd "$BACKEND_DIR"
-"$VENV_DIR/bin/python" -c 'import database; database._ensure_ready()'
-echo "Recetario: base $DB_PATH; puerto $PORT; escucha en la red local."
-exec "$VENV_DIR/bin/python" "$BACKEND_DIR/serve.py"
+exec "$VENV_DIR/bin/python" "$BACKEND_DIR/main.py"
