@@ -20,3 +20,7 @@ backups/
 data/
 AGENTS.md
 tests/results/
+# Certificados y claves privadas
+*.key
+recetario-tls/
+recetario-secrets/

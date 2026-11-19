@@ -49,7 +49,7 @@ instalada y ejecuta `sudo systemctl daemon-reload` antes de reiniciarlo. El ejem
 | Docker Compose | 8000 | `./backend/data/recetario.db` en el ordenador, montada como `/app/data/recetario.db` |
 | Raspberry: `despliegue_raspberry.sh` sin configurar | 80 | `<repositorio>/data/recetario.db` |
 | Backend Python sin `DB_PATH` | 8000 por defecto | `<repositorio>/backend/data/recetario.db` |
-| Raspberry: instalación recomendada | 80 | `/home/pi/.local/share/recetario/recetario.db`, después de copiar y verificar la base activa |
+| Raspberry: instalación recomendada | 80 | `/home/pizero/.local/share/recetario/recetario.db`, después de copiar y verificar la base activa |
 
 `DB_PATH` tiene prioridad y debe ser absoluto. Si falta el archivo, Docker Compose
 crea una base nueva en esa ruta. En Raspberry, el arranque avisa de la ausencia.
@@ -66,7 +66,7 @@ Para comprobar una instalación configurada:
 ```sh
 # Raspberry, desde el repositorio y con un archivo propio de confianza:
 set -a
-. /home/pi/.config/recetario/recetario.env
+. /home/pizero/.config/recetario/recetario.env
 set +a
 .venv/bin/python backend/manage.py info
 # Docker (si ya está arrancado):
@@ -141,7 +141,7 @@ el Python del sistema a mano. Si tu Raspberry Pi OS es antiguo, prepara su actua
 con una copia externa de los datos antes de continuar. Waitress es un servidor WSGI de
 Python puro: un proceso, dos hilos, sin Nginx ni contenedores.
 
-Los ejemplos usan usuario `pi` y repositorio `/home/pi/recetario`. **Sustitúyelos por
+Los ejemplos usan usuario `pizero` y repositorio `/home/pizero/recetario`. **Sustitúyelos por
 los tuyos** en archivos de configuración, servicios y comandos.
 
 1. Si ya hay recetas, completa primero «Primer despliegue seguro» más abajo,
@@ -150,59 +150,124 @@ los tuyos** en archivos de configuración, servicios y comandos.
 
    ```sh
    sudo apt-get install python3 python3-venv
-   cd /home/pi/recetario
+   cd /home/pizero/recetario
    ./despliegue_raspberry.sh install
-   mkdir -p /home/pi/.config/recetario
-   chmod 700 /home/pi/.config/recetario
-   cp deploy/recetario.env.example /home/pi/.config/recetario/recetario.env
-   chmod 600 /home/pi/.config/recetario/recetario.env
+   mkdir -p /home/pizero/.config/recetario
+   chmod 700 /home/pizero/.config/recetario
+   cp deploy/recetario.env.example /home/pizero/.config/recetario/recetario.env
+   chmod 600 /home/pizero/.config/recetario/recetario.env
    ```
 
-   Edita ese archivo: `DB_PATH` debe indicar la base **ya verificada**,
-   `BACKUP_DIR` un directorio externo permanente y `PORT=80`.
+   Edita ese archivo con `nano /home/pizero/.config/recetario/recetario.env`.
+   Para una instalación nueva, esta es la configuración del ejemplo:
+
+   ```ini
+   DB_PATH=/home/pizero/.local/share/recetario/recetario.db
+   BACKUP_DIR=/home/pizero/.local/share/recetario-backups
+   BACKUP_RETAIN=2
+   PORT=80
+   ```
+
+   Si ya tienes datos, `DB_PATH` debe apuntar a la base verificada de esa instalación.
    Las opciones se respetan desde el entorno. Para un arranque manual puedes usar
-   `RECETARIO_ENV=/home/pi/.config/recetario/recetario.env ./despliegue_raspberry.sh start`.
+   `RECETARIO_ENV=/home/pizero/.config/recetario/recetario.env ./despliegue_raspberry.sh start`.
    El archivo se interpreta como shell: úsalo solo si es tuyo y de confianza.
    En systemd se usa `EnvironmentFile`; usa asignaciones simples con rutas absolutas.
 
-3. Carga la configuración y comprueba/migra con el servicio detenido:
+3. Carga la configuración desde el directorio de Recetario, con el servicio detenido.
 
    ```sh
    set -a
-   . /home/pi/.config/recetario/recetario.env
+   . /home/pizero/.config/recetario/recetario.env
    set +a
-   # SOLO si esta instalación empieza de cero, sin base ni datos anteriores:
-   # .venv/bin/python backend/manage.py init
-   .venv/bin/python backend/manage.py info
-   .venv/bin/python backend/manage.py migrate
-   .venv/bin/python backend/manage.py info
    ```
 
-   **Solo instalación nueva sin datos anteriores:** `manage.py init`, en lugar de
-   migrar una base ausente. Si no tienes certeza, detente y busca la base anterior.
-
-4. Edita `deploy/recetario.service`: usuario, directorio, archivo de entorno y
-   `ExecStart`. Instala el servicio:
+   **Instalación nueva sin datos anteriores.** `manage.py info` solo inspecciona
+   archivos existentes y muestra «Base ausente» hasta que crees la base. Ejecuta
+   estos comandos como usuario normal. `init` crea la carpeta y una base con el
+   esquema actual, lista para añadir recetas.
 
    ```sh
-   sudo cp deploy/recetario.service /etc/systemd/system/
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now recetario
-   systemctl status recetario
-   journalctl -u recetario -n 40 --no-pager
+   .venv/bin/python backend/manage.py init
+   .venv/bin/python backend/manage.py info
    ```
 
-   El proceso usa `User=pi` y solo `CAP_NET_BIND_SERVICE` para escuchar en el
-   puerto 80. El script rechaza root. No uses `sudo ./despliegue_raspberry.sh`, ni pongas capacidades
-   sobre el intérprete global de Python. Comprueba que tu systemd admite
-   `AmbientCapabilities`; si no, actualiza el sistema antes de instalar el servicio.
-   El arranque manual sin esa capacidad puede fallar en el puerto 80 y lo explica.
-   Otro servicio que ya ocupe el 80 debe resolverse antes de arrancar Recetario.
+   **Instalación existente.** Comprueba la base configurada antes de migrar.
+
+   ```sh
+   .venv/bin/python backend/manage.py info &&
+       .venv/bin/python backend/manage.py migrate &&
+       .venv/bin/python backend/manage.py info
+   ```
+
+   Si `info` muestra «Base ausente» y ya tenías recetas en esta Raspberry, busca
+   la base anterior con `find "$HOME" -type f -name recetario.db -print` y revisa
+   el `DB_PATH` de la instalación anterior. Puedes comprobar un archivo encontrado
+   con `.venv/bin/python backend/manage.py --db /ruta/absoluta/recetario.db info`.
+   Cuando identifiques la base, sigue el procedimiento de actualización segura de
+   este documento. Reserva `init` para instalaciones nuevas.
+
+4. Instala el [servicio de arranque automático](#arranque-automático-tras-un-corte-de-luz).
 
 5. Abre `http://IP_DE_LA_RASPBERRY/` desde el móvil o el ordenador en la misma red.
    El servidor escucha en `0.0.0.0`; permite el puerto 80 en tu cortafuegos local
    si lo usas. Las dependencias solo se instalan con `./despliegue_raspberry.sh install`:
    los siguientes arranques no ejecutan pip. Si cambia requirements, vuelve a instalar.
+
+### Arranque automático tras un corte de luz
+
+Cuando vuelva la corriente y arranque la Raspberry, systemd iniciará la versión
+instalada de Recetario con la base indicada en `recetario.env`. La unidad también
+vuelve a iniciar Waitress tras 10 segundos si el proceso falla.
+
+1. Después de preparar las dependencias y comprobar la base en los pasos
+   anteriores, instala la unidad desde el directorio de Recetario. Si ya tienes
+   una unidad instalada, conserva esa copia y revisa su configuración en el paso 2.
+
+   ```sh
+   sudo install -m 0644 deploy/recetario.service /etc/systemd/system/recetario.service
+   ```
+
+2. Abre la unidad con `sudoedit /etc/systemd/system/recetario.service` y adapta
+   estos valores a tu instalación. Por ejemplo, si extrajiste el código en
+   `/home/pizero/recetario-nuevo`, usa esa carpeta en `WorkingDirectory` y `ExecStart`.
+
+   ```ini
+   User=pizero
+   WorkingDirectory=/home/pizero/recetario
+   EnvironmentFile=/home/pizero/.config/recetario/recetario.env
+   ExecStart=/home/pizero/recetario/despliegue_raspberry.sh start
+   ```
+
+   Usa el usuario normal que instaló las dependencias y tiene acceso de escritura
+   a la base y su carpeta. Conserva `AmbientCapabilities=CAP_NET_BIND_SERVICE` y
+   `CapabilityBoundingSet=CAP_NET_BIND_SERVICE` de la plantilla para escuchar en el
+   puerto 80. Si otro servicio ocupa ese puerto, resuelve el conflicto antes de
+   iniciar Recetario.
+
+3. Habilita el arranque automático e inicia el servicio ahora.
+
+   ```sh
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now recetario.service
+   systemctl is-enabled recetario.service
+   systemctl is-active recetario.service
+   ```
+
+   Espera `enabled` y `active`. Si ya estaba activo al editar la unidad, aplica
+   los cambios con `sudo systemctl restart recetario.service`.
+
+4. Para comprobarlo ahora, reinicia la Raspberry con `sudo reboot`. Cuando vuelva
+   a estar disponible, abre `http://IP_DE_LA_RASPBERRY/` desde tu red y comprueba
+   el registro de ese arranque.
+
+   ```sh
+   sudo journalctl -b -u recetario.service -n 40 --no-pager
+   ```
+
+   Si configuraste el [HTTPS local](#https-en-raspberry-pi-zero-w) con Nginx,
+   verifica también `sudo nginx -t` y habilita su servicio con
+   `sudo systemctl enable --now nginx` para recuperar el acceso por HTTPS.
 
 ## Copias semanales: conservar las dos últimas
 
@@ -233,7 +298,7 @@ los respaldos verificados a otro dispositivo.
 
 1. En el archivo externo `recetario.env`, deja `BACKUP_RETAIN=2`. Comprueba que
    `DB_PATH` apunta a tu base activa y `BACKUP_DIR` a una carpeta permanente externa.
-2. Ejecuta manualmente `/home/pi/recetario/deploy/backup-weekly.sh` y comprueba la
+2. Ejecuta manualmente `/home/pizero/recetario/deploy/backup-weekly.sh` y comprueba la
    ruta de la copia generada. Funciona desde cualquier directorio y carga el mismo
    archivo de configuración que la aplicación. Puedes cambiarlo con `RECETARIO_ENV`.
 3. Comprueba que cron está instalado y activo (`systemctl status cron`). En Raspberry
@@ -242,7 +307,7 @@ los respaldos verificados a otro dispositivo.
    usuario y rutas (también disponible en `deploy/recetario.crontab.example`):
 
 ```cron
-0 3 * * 0 /home/pi/recetario/deploy/backup-weekly.sh >> /home/pi/.local/share/recetario-backup.log 2>&1
+0 3 * * 0 /home/pizero/recetario/deploy/backup-weekly.sh >> /home/pizero/.local/share/recetario-backup.log 2>&1
 ```
 
 Se ejecuta cada **domingo a las 03:00, hora local de la Raspberry**. Confirma la zona
@@ -412,8 +477,8 @@ posteriores; no vuelvas a ejecutar `init`.
    ```sh
    python3 /tmp/recetario-protect.py \
      --source /RUTA/EXACTA/DE/LA/BASE/ACTIVA.db \
-     --target /home/pi/.local/share/recetario/recetario.db \
-     --backup-dir /home/pi/.local/share/recetario-backups \
+     --target /home/pizero/.local/share/recetario/recetario.db \
+     --backup-dir /home/pizero/.local/share/recetario-backups \
      --writers-stopped
    ```
 
@@ -444,9 +509,9 @@ posteriores; no vuelvas a ejecutar `init`.
    **la base actual**, no de la que había al empezar a desarrollar una versión:
 
    ```sh
-   cd /home/pi/recetario
+   cd /home/pizero/recetario
    set -a
-   . /home/pi/.config/recetario/recetario.env
+   . /home/pizero/.config/recetario/recetario.env
    set +a
    sudo systemctl stop recetario
    .venv/bin/python backend/manage.py info
@@ -532,67 +597,138 @@ de Recetario y vuelve a abrirlo para que se active la nueva versión de recursos
 
 ### HTTPS en Raspberry Pi Zero W
 
-Puedes añadir Nginx únicamente para terminar TLS en el puerto **443** de la IP
-local. Waitress conserva **80** y la misma base SQLite. Reserva una IP fija para
-la Raspberry en el router para que el certificado siga coincidiendo con la URL.
-Mantén ambos puertos en la red local y evita redirecciones desde Internet. Si
-ya tienes un proxy local, puedes reutilizarlo. El siguiente ejemplo usa
-`192.168.1.50`. Sustitúyela por la IP de tu Raspberry.
+Nginx sirve HTTPS en el puerto **443** de la IP local. Recetario sigue en el
+puerto **80** con la misma base SQLite. Mantén ambos puertos en la red local,
+sin redirecciones desde Internet.
 
-En un ordenador de confianza, fuera del repositorio, crea una autoridad privada
-y un certificado de servidor con esa IP en el SAN. Conserva `ca.key` cifrada en
-el ordenador.
+Los comandos se ejecutan como usuario `pizero` en la Raspberry y usan
+`/home/pizero/recetario` como carpeta del proyecto. Comprueba la IP con
+`hostname -I` y reserva esa dirección en el router. Cambia el valor de
+`RECETARIO_IP` si tu Pi usa otra dirección. Usa esa misma IP en la URL del móvil.
+
+#### 1. Generar la CA y el certificado del servidor
+
+En la **primera configuración**, crea una carpeta privada nueva fuera del
+repositorio. Esto permite repetir un intento fallido sin sobrescribir archivos.
 
 ```sh
-mkdir -m 700 "$HOME/recetario-tls"
-cd "$HOME/recetario-tls"
-umask 077
-RECETARIO_IP=192.168.1.50
+RECETARIO_IP=192.168.1.25
+mkdir -p -m 0700 "$HOME/recetario-tls" &&
+    cd "$(mktemp -d "$HOME/recetario-tls/emitir.XXXXXX")" &&
+    umask 077 &&
+    openssl genrsa -aes256 -out ca.key 2048
+```
 
-openssl genrsa -aes256 -out ca.key 2048
-openssl req -x509 -new -key ca.key -sha256 -days 3650 -out ca.crt \
-  -subj '/CN=Recetario CA local' \
-  -addext 'basicConstraints=critical,CA:TRUE,pathlen:0' \
-  -addext 'keyUsage=critical,keyCertSign,cRLSign'
+Cuando OpenSSL muestre `Enter PEM pass phrase`, escribe una frase de contraseña
+larga y repítela para confirmar. La terminal no muestra los caracteres. Si
+aparece `result too small` o `Could not find private key from ca.key`, vuelve a
+ejecutar el bloque anterior y espera a que termine antes de continuar.
 
-openssl req -new -newkey rsa:2048 -nodes -keyout server.key -out server.csr \
-  -subj "/CN=$RECETARIO_IP"
-cat > server.ext <<EOF_EXT
+Desde esa misma carpeta y terminal, ejecuta el siguiente bloque. OpenSSL te
+pedirá la misma frase para crear el certificado de la CA y para firmar el del
+servidor. La IP del certificado se incluye en el SAN.
+
+```sh
+(
+    set -eu
+    openssl req -x509 -new -key ca.key -sha256 -days 3650 -out ca.crt \
+        -subj '/CN=Recetario CA local' \
+        -addext 'basicConstraints=critical,CA:TRUE,pathlen:0' \
+        -addext 'keyUsage=critical,keyCertSign,cRLSign'
+
+    openssl req -new -newkey rsa:2048 -nodes -keyout server.key -out server.csr \
+        -subj "/CN=$RECETARIO_IP"
+    cat > server.ext <<EOF_EXT
 basicConstraints=critical,CA:FALSE
 keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=serverAuth
 subjectAltName=IP:$RECETARIO_IP
 EOF_EXT
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
-  -sha256 -days 365 -extfile server.ext -out server.crt
-openssl x509 -in ca.crt -outform DER -out recetario-ca.cer
+    openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+        -sha256 -days 365 -extfile server.ext -out server.crt
+    openssl verify -CAfile ca.crt -purpose sslserver -verify_ip "$RECETARIO_IP" server.crt
+    openssl x509 -in ca.crt -outform DER -out recetario-ca.cer
+)
 ```
 
-Copia solo `server.crt` y `server.key` a la Raspberry. Instálalos en
-`/etc/nginx/recetario/` como root, con permiso `600` para la clave del servidor.
-Instala el paquete `nginx` de Raspberry Pi OS. Si la instalación habilita el
-sitio de ejemplo en el puerto 80, deshabilita **ese sitio de ejemplo** antes de
-ejecutar ambos servidores. Puedes parar temporalmente Recetario mientras instalas
-el paquete para evitar que el sitio de ejemplo intente ocupar el puerto.
+La verificación debe mostrar `server.crt: OK`. Guarda `ca.key` cifrada y su
+frase en un lugar seguro, preferiblemente fuera de la Pi. Para renovar el
+certificado de servidor antes de sus 365 días, usa esa misma CA para firmarlo,
+instala el certificado nuevo y recarga Nginx. Los teléfonos conservarán la
+confianza en esa CA.
 
-Adapta [deploy/recetario.nginx.example](deploy/recetario.nginx.example), instálalo
-como `/etc/nginx/sites-available/recetario` y enlázalo desde `sites-enabled`.
-Comprueba la configuración con `sudo nginx -t`, arranca Recetario y recarga Nginx.
-Desde el ordenador, verifica el certificado y el proxy con
-`curl --cacert ca.crt https://192.168.1.50/manifest.webmanifest`. Renueva el
-certificado de servidor antes de los 365 días y recarga Nginx.
-Consulta la [documentación de HTTPS en Nginx](https://nginx.org/en/docs/http/configuring_https_servers.html).
+#### 2. Instalar y configurar Nginx
 
-Transfiere **solo el certificado público** `recetario-ca.cer` al móvil por un
-medio de confianza. En Android, busca en Ajustes la opción **Instalar un
-certificado → Certificado de CA**. En iPhone, abre e instala el perfil y activa
-la confianza completa en **Ajustes → General → Información → Ajustes de confianza
-de los certificados**. Comprueba que la URL HTTPS abra sin avisos antes de
-instalar Recetario. [Apple y certificados instalados manualmente](https://support.apple.com/es-es/102390)
+Si aún no tienes Nginx, detén brevemente Recetario durante la instalación. El
+sitio de ejemplo de Nginx puede usar el puerto 80 hasta que lo deshabilites.
 
-Las pruebas automatizadas comprueban Chromium en escritorio y resolución móvil.
-En cada teléfono quedan por verificar la instalación, el icono, la apertura
-desde la pantalla de inicio y el acceso al proxy por HTTPS.
+```sh
+sudo apt update &&
+    sudo systemctl stop recetario.service &&
+    sudo apt install nginx
+```
+
+Desde la carpeta de los certificados, instala los archivos y adapta la
+[plantilla de Recetario](deploy/recetario.nginx.example) a tu IP. Si abriste otra
+terminal, vuelve a la carpeta privada y define de nuevo `RECETARIO_IP`.
+
+```sh
+sudo install -d -m 0755 /etc/nginx/recetario
+sudo install -m 0644 server.crt /etc/nginx/recetario/server.crt
+sudo install -m 0600 server.key /etc/nginx/recetario/server.key
+
+sed "s/192\.168\.1\.50/${RECETARIO_IP:?Define la IP de la Raspberry}/g" \
+    /home/pizero/recetario/deploy/recetario.nginx.example > recetario.nginx &&
+    sudo install -m 0644 recetario.nginx /etc/nginx/sites-available/recetario
+```
+
+Si el sitio Recetario aún no está habilitado, crea el enlace.
+
+```sh
+sudo ln -s /etc/nginx/sites-available/recetario /etc/nginx/sites-enabled/recetario
+```
+
+Si `/etc/nginx/sites-enabled/default` es el enlace al sitio de ejemplo de
+Nginx, desactívalo con `sudo unlink /etc/nginx/sites-enabled/default` para
+liberar el puerto 80. Valida la configuración y deja Nginx habilitado para
+arrancar tras un corte de luz.
+
+```sh
+sudo nginx -t &&
+    sudo systemctl enable --now nginx &&
+    sudo systemctl reload nginx &&
+    sudo systemctl start recetario.service
+```
+
+Comprueba que HTTPS devuelve el JSON de Recetario con la CA que acabas de crear.
+
+```sh
+curl -fsS --cacert ca.crt "https://${RECETARIO_IP}/manifest.webmanifest"
+```
+
+Si obtienes `502`, comprueba `systemctl status recetario.service --no-pager`.
+Si Nginx falla al arrancar, revisa `sudo nginx -t` y
+`sudo journalctl -u nginx -n 30 --no-pager`.
+[Documentación de HTTPS en Nginx](https://nginx.org/en/docs/http/configuring_https_servers.html).
+
+#### 3. Confiar en la CA desde el móvil
+
+Transfiere al teléfono **solo el certificado público** `recetario-ca.cer` por un
+medio de confianza. Ejecuta `realpath recetario-ca.cer` para obtener su ruta si
+lo vas a copiar por SCP.
+
+- **Android.** Busca **Instalar un certificado** en Ajustes y elige
+  **Certificado de CA**. Selecciona el archivo y abre Chrome.
+  [Ayuda de Android](https://support.google.com/pixelphone/answer/2844832?hl=es)
+- **iPhone.** Abre el archivo e instala el perfil descargado en Ajustes. En
+  **Ajustes → General → Información → Ajustes de confianza de los certificados**,
+  activa la confianza completa en **Recetario CA local**.
+  [Ayuda de Apple](https://support.apple.com/es-es/102390)
+
+Con el móvil conectado a tu Wi-Fi, abre `https://192.168.1.25/` o la IP que
+configuraste. Cuando cargue sin avisos de certificado, instala Recetario desde
+esa URL. Abre la aplicación desde el icono y comprueba que carga con conexión
+antes de probar el modo sin conexión.
 
 ### Consultar sin conexión
 
