@@ -76,12 +76,19 @@ body {
 }
 
 .material-symbols-rounded {
+    font-family: "Material Symbols Rounded";
+    font-weight: normal;
+    font-style: normal;
+    font-feature-settings: "liga";
+    line-height: 1;
     font-size: 24px;
     display: inline-block;
     width: 1em;
     flex-shrink: 0;
     overflow: hidden;
     white-space: nowrap;
+    letter-spacing: normal;
+    text-transform: none;
 }
 
 .top-nav {
