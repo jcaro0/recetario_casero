@@ -2,12 +2,26 @@ let pendingRecipe = null;
 let editingRecipeId = null;
 let savingRecipe = false;
 
-document.addEventListener("DOMContentLoaded", async () => {
+document.addEventListener("DOMContentLoaded", () => {
     setupDuplicateModal();
     byId("recipeForm").addEventListener("submit", saveRecipe);
     byId("recipeForm").addEventListener("keydown", advanceOnEnter);
     byId("addStep").onclick = () => addPreparationStep().focus();
+    loadRecipeForm();
+    document.addEventListener("recetario:refreshed", event => {
+        if (event.detail.recovered) loadRecipeForm();
+    });
+    document.addEventListener("recetario:locked", () => { pendingRecipe = null; });
+});
+
+async function loadRecipeForm() {
+    byId("recipeFields").disabled = true;
+    byId("recipeForm").reset();
+    byId("ingredientList").replaceChildren();
+    byId("preparationList").replaceChildren();
+    byId("formStatus").textContent = "";
     try {
+        await initializeSnapshot();
         const id = new URLSearchParams(location.search).get("id");
         if (id !== null) {
             if (!/^\d+$/.test(id)) throw new Error("Identificador de receta no válido");
@@ -29,8 +43,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         byId("recipeFields").disabled = false;
     } catch (err) {
         byId("formStatus").textContent = "No se pudo abrir la receta: " + err.message;
+    } finally {
+        applyWriteAccess();
     }
-});
+}
 
 function createIngredientRow(ingredient = {}) {
     const div = document.createElement("div");
@@ -165,7 +181,7 @@ function resetRecipeForm() {
 }
 
 async function submitRecipe(recipe) {
-    if (savingRecipe) return;
+    if (!canWrite() || savingRecipe) return;
     savingRecipe = true;
     byId("recipeFields").disabled = true;
     try {
@@ -181,13 +197,14 @@ async function submitRecipe(recipe) {
     } finally {
         savingRecipe = false;
         byId("recipeFields").disabled = false;
+        applyWriteAccess();
     }
 }
 
 async function saveRecipe(e) {
     e.preventDefault();
     // Solo el botón Guardar puede enviar: ningún envío implícito desde otro campo.
-    if (!e.submitter?.matches('.submitButton') || savingRecipe) return;
+    if (!canWrite() || !e.submitter?.matches('.submitButton') || savingRecipe) return;
     if (!byId("recipeForm").reportValidity()) return;
     const recipe = collectRecipe();
     if (!recipe.name) { byId("recipeName").focus(); return; }

@@ -11,11 +11,13 @@ let weekPeople = 2;
 document.addEventListener("DOMContentLoaded", () => {
     setupShareDropdown(shareMenu);
     loadWeeklyMenu();
+    document.addEventListener("recetario:refreshed", loadWeeklyMenu);
+    document.addEventListener("recetario:locked", closeChooseRecipeModal);
     setupModal();
     byId("weekPeopleForm").onsubmit = async e => {
         e.preventDefault();
         const input = byId("weekPeople");
-        if (!input.reportValidity()) return;
+        if (!canWrite() || !input.reportValidity()) return;
         const button = e.currentTarget.querySelector("button");
         button.disabled = true;
         try {
@@ -23,7 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
             byId("weekPeopleStatus").textContent = "Comensales actualizados";
             await loadWeeklyMenu();
         } catch (err) { byId("weekPeopleStatus").textContent = err.message; }
-        finally { button.disabled = false; }
+        finally { button.disabled = false; applyWriteAccess(); }
     };
     setupChooseRecipeModal();
     setupWeekGridEvents();
@@ -46,7 +48,7 @@ async function shareMenu(type) {
             });
             text += "\n";
         });
-        shareText(text.trim(), type, "Menú semanal");
+        await shareText(text.trim(), type, "Menú semanal");
     } catch (e) {
         alert("No se pudo compartir el menú: " + e.message);
     }
@@ -57,7 +59,7 @@ function slotHtml(dayKey, meal, recipe) {
     const name = recipe?.name || "Sin receta";
     const count = recipe?.ingredients?.length || 0;
     return `
-        <div class="meal-slot" draggable="true"
+        <div class="meal-slot" data-write-drag
              data-day="${dayKey}" data-meal="${meal.key}">
             <div class="meal-label">${meal.icon} ${meal.label}</div>
             <div class="food">
@@ -65,9 +67,9 @@ function slotHtml(dayKey, meal, recipe) {
                 <small>${count} ingredientes</small>
             </div>
             ${recipe?.id ? `<div class="slot-people">Comensales
-                <input type="number" min="1" max="2147483647" step="1" required value="${recipe.people || recipe.servings || 2}"
+                <input data-write type="number" min="1" max="2147483647" step="1" required value="${recipe.people || recipe.servings || 2}"
                     aria-label="Comensales de ${escapeHtml(dayKey)} ${meal.label.toLowerCase()}">
-                <button type="button" class="reset-people" title="Usar las raciones originales">Originales (${recipe.servings || 2})</button>
+                <button type="button" class="reset-people" data-write title="Usar las raciones originales">Originales (${recipe.servings || 2})</button>
             </div>` : ""}
         </div>
     `;
@@ -113,7 +115,9 @@ async function loadWeeklyMenu() {
             `;
         }).join("");
     } catch (e) {
-        grid.innerHTML = "<p>No se pudo cargar el menú.</p>";
+        grid.innerHTML = `<p>${escapeHtml(e.message)}</p>`;
+    } finally {
+        applyWriteAccess();
     }
 }
 
@@ -133,7 +137,7 @@ function setupModal() {
     cancel.onclick = () => modal.classList.add("hidden");
     dismissModalOnBackdropOrEscape("modal", cancel.onclick);
     confirm.onclick = async () => {
-        if (!people.reportValidity()) return;
+        if (!canWrite() || !people.reportValidity()) return;
         confirm.disabled = true;
         try {
             await api("/menu/generate", "POST", { people: Number(people.value) });
@@ -220,7 +224,7 @@ async function selectRecipeForSlot(recipeId) {
     if (!currentEditSlot) return;
     const { day, meal } = currentEditSlot;
     const input = byId("slotPeople");
-    if (!input.reportValidity()) return;
+    if (!canWrite() || !input.reportValidity()) return;
     try {
         await saveMenuSlot(day, meal, recipeId, input.value ? Number(input.value) : null);
     } catch (e) {
@@ -235,6 +239,7 @@ function setupWeekGridEvents() {
     const grid = byId("weekGrid");
 
     grid.addEventListener("click", async (e) => {
+        if (!canWrite()) return;
         if (e.target.closest(".slot-people")) {
             if (e.target.closest(".reset-people")) await updateSlotPeople(e.target.closest(".meal-slot"), null);
             return;
@@ -245,14 +250,14 @@ function setupWeekGridEvents() {
     });
 
     grid.addEventListener("change", async (e) => {
-        if (!e.target.matches(".slot-people input") || !e.target.reportValidity()) return;
+        if (!canWrite() || !e.target.matches(".slot-people input") || !e.target.reportValidity()) return;
         await updateSlotPeople(e.target.closest(".meal-slot"), Number(e.target.value));
     });
     grid.addEventListener("keydown", e => {
         if (e.key === "Enter" && e.target.matches(".slot-people input")) e.target.blur();
     });
     grid.addEventListener("dragstart", (e) => {
-        if (e.target.closest(".slot-people")) { e.preventDefault(); return; }
+        if (!canWrite() || e.target.closest(".slot-people")) { e.preventDefault(); return; }
         const slot = e.target.closest(".meal-slot");
         if (!slot) return;
         e.dataTransfer.effectAllowed = "move";
@@ -281,6 +286,7 @@ function setupWeekGridEvents() {
     });
 
     grid.addEventListener("drop", async (e) => {
+        if (!canWrite()) return;
         const slot = e.target.closest(".meal-slot");
         if (!slot) return;
         e.preventDefault();

@@ -46,10 +46,15 @@ body {
 /* ========================================================
    HEADER + NAVEGACIÓN
    ======================================================== */
-.topbar {
+.app-header {
     position: sticky;
     top: 0;
     z-index: 10;
+    display: flow-root;
+    background: var(--background);
+}
+
+.topbar {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
@@ -548,4 +553,34 @@ header.topbar {
         flex-direction: row;
         padding: 10px 18px;
     }
+}
+
+.connection-status {
+    width: fit-content;
+    max-width: calc(100% - 40px);
+    margin: 12px auto 0;
+    padding: 6px 12px;
+    border-radius: 10px;
+    background: #eeecea;
+    color: #4d4843;
+    font-size: .85rem;
+    text-align: center;
+    transition: opacity .25s ease;
+}
+
+.connection-status.fading {
+    opacity: 0;
+}
+
+[data-readonly] [data-write] {
+    opacity: .6;
+    cursor: default;
+}
+
+[data-readonly] [data-write-drag] {
+    cursor: default;
+}
+
+[data-readonly] .day-hint {
+    visibility: hidden;
 }
