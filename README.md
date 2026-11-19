@@ -12,7 +12,7 @@ No se ha accedido a la Raspberry ni migrado la base real del ordenador.
 Los tres lanzadores se pueden ejecutar desde cualquier directorio y tienen `--help`:
 
 ```sh
-# Ordenador: construir, comprobar la base existente y arrancar en el puerto 8000.
+# Ordenador: construir, preparar la base y arrancar en el puerto 8000.
 ./despliegue_docker.sh
 # También admite: build, stop, status y logs.
 
@@ -28,7 +28,8 @@ Los tres lanzadores se pueden ejecutar desde cualquier directorio y tienen `--he
 # También permite ejecutar por separado: backend, startup o browser.
 ```
 
-Los lanzadores de despliegue no inicializan ni migran bases automáticamente.
+Docker Compose inicializa la base cuando falta el archivo. En Raspberry, la
+inicialización se hace con `manage.py init`. Las migraciones siguen siendo explícitas.
 No instalan herramientas de prueba en Raspberry. `ejecutar_test.sh install` crea
 `.venv-tests` e instala Playwright y su Chromium; si ya tienes un Chromium, indica
 `CHROMIUM_PATH=/ruta/chromium` para omitir la descarga. No modifica Python del sistema.
@@ -50,9 +51,10 @@ instalada y ejecuta `sudo systemctl daemon-reload` antes de reiniciarlo. El ejem
 | Backend Python sin `DB_PATH` | 8000 por defecto | `<repositorio>/backend/data/recetario.db` |
 | Raspberry: instalación recomendada | 80 | `/home/pi/.local/share/recetario/recetario.db`, después de copiar y verificar la base activa |
 
-`DB_PATH` tiene prioridad y debe ser absoluto. No se busca automáticamente otra base
-si falta el archivo: el arranque falla. Una base vacía, incompleta o demasiado nueva
-también detiene el arranque. No hay restauraciones ni migraciones automáticas.
+`DB_PATH` tiene prioridad y debe ser absoluto. Si falta el archivo, Docker Compose
+crea una base nueva en esa ruta. En Raspberry, el arranque avisa de la ausencia.
+Una base existente vacía, incompleta o demasiado nueva detiene el arranque.
+Las restauraciones y migraciones se ejecutan por separado.
 
 El script antiguo elegía `data/recetario.db`, mientras el backend y Docker elegían
 `backend/data/recetario.db`. **Si existen ambas, no elijas solo por fecha o tamaño**:
@@ -126,11 +128,11 @@ host sigue siendo la fuente de verdad. No borres ese directorio ni sus auxiliare
 
 3. Abre `http://localhost:8000`. Para otros equipos: `http://IP_DEL_ORDENADOR:8000`.
 
-**Solo instalación completamente nueva:** si nunca has tenido recetas ni una base
-que conservar, ejecuta `docker compose run --rm --no-deps backend python manage.py init`
-tras construir la imagen. `init` falla si ya existe un archivo; no lo borres para repetirlo.
-Un clon antiguo puede traer una base versionada: no la confundas con una instalación vacía.
-No se ha probado aquí un despliegue contra el volumen real para evitar migrarlo.
+**Instalación nueva:** tras configurar las copias, ejecuta `./despliegue_docker.sh start`.
+Si falta `backend/data/recetario.db`, el arranque crea una base sin recetas con el
+esquema actual. Si esperabas encontrar recetas, revisa primero el montaje y las
+copias. Si falta la base pero quedan archivos WAL, SHM o journal con el mismo
+nombre, el arranque espera a que revises esos archivos.
 
 ## Raspberry Pi Zero W: Python sin Docker
 

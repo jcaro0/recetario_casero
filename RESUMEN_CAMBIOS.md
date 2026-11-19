@@ -70,9 +70,9 @@ systemd, la ayuda del cron, la detección del directorio de código en los backu
 las pruebas y las instrucciones. Si ya hay una unidad instalada, hay que actualizar
 su `ExecStart` y ejecutar `sudo systemctl daemon-reload` antes de reiniciar.
 
-`despliegue_docker.sh` construye la imagen, valida la base existente y arranca
+`despliegue_docker.sh` construye la imagen, crea la base si falta, valida su esquema y arranca
 Compose en el puerto 8000. También admite `build`, `stop`, `status` y `logs`.
-No inicializa ni migra bases; no elimina volúmenes ni modifica Compose.
+Las migraciones siguen siendo explícitas y los volúmenes se conservan.
 Las pruebas del lanzador Docker simulan la orden Docker, sin tocar contenedores reales.
 
 `ejecutar_test.sh` reúne backend, arranque/reinicio y Chromium; permite elegir una
