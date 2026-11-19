@@ -1,5 +1,10 @@
 const byId = id => document.getElementById(id);
 
+if (window.isSecureContext && "serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" })
+        .catch(error => console.warn("No se pudo preparar Recetario para instalar:", error));
+}
+
 // Evita saltos de scroll al navegar con View Transitions
 document.addEventListener("click", (e) => {
     const link = e.target.closest("a[href]");

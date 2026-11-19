@@ -57,9 +57,21 @@ def serve_page(page):
     return render_template(page, page=page.removesuffix(".html"))
 
 
-@app.get("/<any(style,scripts,img):directory>/<path:filename>")
+@app.get("/<any(style,scripts,img,fonts):directory>/<path:filename>")
 def serve_asset(directory, filename):
     return send_from_directory(os.path.join(FRONTEND_FOLDER, directory), filename)
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    return send_from_directory(FRONTEND_FOLDER, "manifest.webmanifest", mimetype="application/manifest+json")
+
+
+@app.get("/sw.js")
+def service_worker():
+    response = send_from_directory(FRONTEND_FOLDER, "sw.js", mimetype="application/javascript")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.get("/days")
