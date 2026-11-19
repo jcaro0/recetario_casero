@@ -182,7 +182,7 @@ def run():
 
                 # Completa el catálogo de prueba para generar una semana sin repetición.
                 for index in range(len(db.DAYS) * 2 - 2):
-                    db.create_recipe(f"Plato de prueba {index}", [
+                    db.save_recipe(f"Plato de prueba {index}", [
                         {"name": "tomate" if index % 2 else "tomates", "qty": 500 if index % 2 else .5,
                          "unit": "g" if index % 2 else "kg"}], servings=2)
                 page.goto(base + "/menu.html")

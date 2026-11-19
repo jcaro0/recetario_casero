@@ -2,9 +2,13 @@
 import argparse
 import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
+
 import backup
+import database as db
+import set_up
 
 
 def main():
@@ -24,18 +28,15 @@ def main():
     args = parser.parse_args()
     if not args.db or not Path(args.db).is_absolute():
         parser.error('Indica --db /ruta/absoluta/recetario.db o DB_PATH explícito.')
-    import database as db
     db.DB_PATH = args.db
-    if args.backup_dir:
-        os.environ['BACKUP_DIR'] = args.backup_dir
     if args.command == 'info':
         print(json.dumps(backup.verify(args.db), ensure_ascii=False, indent=2))
     elif args.command == 'init':
-        import set_up
         set_up.initialize()
         print(json.dumps(backup.verify(args.db)))
     elif args.command == 'migrate':
-        import set_up
+        if args.backup_dir:
+            os.environ['BACKUP_DIR'] = args.backup_dir
         set_up.create_tables()
         print(json.dumps(backup.verify(args.db)))
     else:
@@ -50,6 +51,6 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (OSError, ValueError, RuntimeError, __import__('sqlite3').Error) as exc:
+    except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
         print(f'ERROR: {exc}', file=sys.stderr)
         sys.exit(1)

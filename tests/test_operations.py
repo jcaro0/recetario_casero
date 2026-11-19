@@ -26,7 +26,7 @@ class OperationsTests(unittest.TestCase):
         self.env = patch.dict(os.environ, {'BACKUP_DIR': str(self.root / 'backups')})
         self.env.start()
         set_up.initialize()
-        self.recipe = db.create_recipe('Actual', [{'name': 'Arroz', 'qty': 2}], notes='No perder', preparation=['Cocer'])
+        self.recipe = db.save_recipe('Actual', [{'name': 'Arroz', 'qty': 2}], notes='No perder', preparation=['Cocer'])
 
     def tearDown(self):
         db.DB_PATH = self.previous
@@ -70,7 +70,7 @@ class OperationsTests(unittest.TestCase):
             self.assertEqual(backup.verify(saved)['recipes'], 1)
             with closing(backup.connect_existing(saved, True)) as conn:
                 self.assertEqual(conn.execute('SELECT notes FROM recipes').fetchone()[0], 'Última escritura WAL')
-        db.create_recipe('Nueva', [{'name': 'Sal'}])
+        db.save_recipe('Nueva', [{'name': 'Sal'}])
         with self.assertRaises(ValueError):
             backup.restore(saved, db.DB_PATH, self.root / 'backups')
         before = backup.restore(saved, db.DB_PATH, self.root / 'backups', stopped=True, confirm=db.DB_PATH)
@@ -186,7 +186,7 @@ class OperationsTests(unittest.TestCase):
 
     def test_first_deployment_copies_latest_25_and_refuses_overwrite(self):
         for index in range(24):
-            db.create_recipe(f'Receta {index}', [{'name': 'Sal'}], notes=f'Nota {index}')
+            db.save_recipe(f'Receta {index}', [{'name': 'Sal'}], notes=f'Nota {index}')
         target = self.root / 'external' / 'recetario.db'
         script = Path(__file__).resolve().parents[1] / 'deploy/protect_existing.py'
         command = [sys.executable, str(script), '--source', db.DB_PATH, '--target', str(target),

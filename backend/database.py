@@ -4,19 +4,17 @@ El esquema se comprueba en el primer acceso; la inicialización y las migracione
 se ejecutan explícitamente con manage.py, nunca desde una petición HTTP.
 """
 
-import os
 import json
-from decimal import Decimal
+import os
+import random
 import sqlite3
 import threading
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 
+from backup import connect_existing
 from normalize import (
-    collapse_spaces,
-    ingredient_key,
-    parse_quantity,
-    normalize_unit,
-    strip_accents,
+    collapse_spaces, display_quantity, group_shopping, ingredient_key,
+    normalize_unit, shopping_key, text_key,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -42,8 +40,8 @@ def _parse_days(raw):
     """
     if not raw:
         return list(DEFAULT_DAYS)
-    wanted = {strip_accents(collapse_spaces(part)).lower() for part in raw.split(",")}
-    days = [d for d in ALL_DAYS if strip_accents(d) in wanted]
+    wanted = {text_key(part) for part in raw.split(",")}
+    days = [d for d in ALL_DAYS if text_key(d) in wanted]
     return days or list(DEFAULT_DAYS)
 
 
@@ -54,255 +52,147 @@ RECIPE_TYPES = ["ambos", "comida", "cena", "extra"]
 
 # Versión del esquema (PRAGMA user_version). La define el esquema, no set_up.
 SCHEMA_VERSION = 5
-REQUIRED_TABLES = ("recipes", "ingredients", "menu", "shopping_checked", "settings")
+SCHEMA_COLUMNS = {
+    "recipes": {"id", "name", "type", "servings", "preparation", "notes"},
+    "ingredients": {"id", "recipe_id", "position", "name", "qty", "unit"},
+    "menu": {"day", "meal", "recipe_id", "people"},
+    "shopping_checked": {"name", "unit"},
+    "settings": {"key", "value"},
+}
 
-
-# ---------------------------------------------------------
-# CONEXIÓN + INICIALIZACIÓN PEREZOSA
-# ---------------------------------------------------------
-
-# Serializa la comprobación inicial entre los hilos del servidor.
-_init_lock = threading.RLock()
+_init_lock = threading.Lock()
 _ready = False
-_initializing = False
 
 
 def _open():
-    """Abre una conexión nueva (sin comprobar nada)."""
-    from backup import connect_existing
+    """Abre una conexión existente, también para migrar un esquema antiguo."""
     conn = connect_existing(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")  # hay que activarlo en cada conexión
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
-def _needs_setup():
-    """True si falta alguna tabla o el esquema es de una versión anterior."""
-    conn = _open()
-    try:
-        tables = {
-            r["name"]
-            for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
-        }
-        version = conn.execute("PRAGMA user_version").fetchone()[0]
-        if version == SCHEMA_VERSION:
-            expected = {
-                'recipes': {'id', 'name', 'type', 'servings', 'preparation', 'notes'},
-                'ingredients': {'id', 'recipe_id', 'position', 'name', 'qty', 'unit'},
-                'menu': {'day', 'meal', 'recipe_id', 'people'},
-                'shopping_checked': {'name', 'unit'},
-                'settings': {'key', 'value'},
-            }
-            for table, columns in expected.items():
-                actual = {r['name'] for r in conn.execute(f'PRAGMA table_info({table})')}
-                if not columns <= actual:
-                    raise RuntimeError(f'Esquema incompleto en {table}; no se reparará creando una base vacía.')
-    finally:
-        conn.close()
+def columns(conn, table):
+    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def check_schema(conn):
+    """Valida que el esquema sea conocido y devuelve su versión."""
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version > SCHEMA_VERSION:
-        raise RuntimeError(f'Esquema {version} demasiado nuevo; esta versión admite {SCHEMA_VERSION}.')
-    if not {'recipes', 'ingredients', 'menu'} <= tables:
-        raise RuntimeError('Base vacía o esquema desconocido. No se inicializará automáticamente; revisa DB_PATH.')
-    return not set(REQUIRED_TABLES) <= tables or version < SCHEMA_VERSION
+        raise RuntimeError(f"Esquema {version} demasiado nuevo; esta versión admite {SCHEMA_VERSION}.")
+    if version == SCHEMA_VERSION:
+        for table, required in SCHEMA_COLUMNS.items():
+            if not required <= columns(conn, table):
+                raise RuntimeError(f"Esquema incompleto en {table}; no se reparará creando una base vacía.")
+    else:
+        tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not {"recipes", "ingredients", "menu"} <= tables:
+            raise RuntimeError("Base vacía o esquema desconocido. Revisa DB_PATH.")
+    return version
 
 
 def _ensure_ready():
     """Comprueba el esquema una vez por proceso, sin crear ni migrar datos."""
-    global _ready, _initializing
+    global _ready
     if _ready:
         return
     with _init_lock:
-        if _ready or _initializing:
-            return
-        _initializing = True
-        try:
-            if _needs_setup():
-                raise RuntimeError('La base requiere migración. Detén la app y ejecuta manage.py migrate con BACKUP_DIR configurado.')
+        if not _ready:
+            with closing(_open()) as conn:
+                if check_schema(conn) != SCHEMA_VERSION:
+                    raise RuntimeError("La base requiere migración. Detén la app y ejecuta manage.py migrate con BACKUP_DIR configurado.")
             _ready = True
-        finally:
-            _initializing = False
 
 
 @contextmanager
 def connection():
-    """
-    Abre una conexión, hace commit si todo va bien (rollback si hay error)
-    y la cierra siempre. Una conexión por operación = seguro con hilos.
-    """
+    """Una conexión por operación, con commit o rollback y cierre garantizado."""
     _ensure_ready()
-    conn = _open()
-    try:
+    with closing(_open()) as conn, conn:
         yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 
-# ---------------------------------------------------------
-# LECTURA DE TODAS LAS TABLAS (tal cual están guardadas)
-# ---------------------------------------------------------
-
-def read_recipes():
-    with connection() as conn:
-        rows = conn.execute("SELECT id, name, type, servings, preparation, notes FROM recipes ORDER BY id").fetchall()
-    return [dict(r) for r in rows]
-
-
-def read_ingredients():
-    with connection() as conn:
-        rows = conn.execute(
-            "SELECT id, recipe_id, position, name, qty, unit "
-            "FROM ingredients ORDER BY recipe_id, position, id"
-        ).fetchall()
-    return [dict(r) for r in rows]
-
-
-def read_menu():
-    """Todas las filas de la tabla menu (los 7 días, comida y cena)."""
-    with connection() as conn:
-        rows = conn.execute("SELECT day, meal, recipe_id, people FROM menu").fetchall()
-    by_slot = {(r["day"], r["meal"]): dict(r) for r in rows}
-    return [
-        {"day": d, "meal": m, "recipe_id": by_slot.get((d, m), {}).get("recipe_id"),
-         "people": by_slot.get((d, m), {}).get("people")}
-        for d in ALL_DAYS
-        for m in MEALS
-    ]
-
-
-def read_shopping_checked():
-    with connection() as conn:
-        rows = conn.execute("SELECT name, unit FROM shopping_checked ORDER BY name").fetchall()
-    return [dict(r) for r in rows]
-
-
-def read_all():
-    """Contenido completo de la base de datos, tabla por tabla."""
-    return {
-        "recipes": read_recipes(),
-        "ingredients": read_ingredients(),
-        "menu": read_menu(),
-        "shopping_checked": read_shopping_checked(),
-    }
-
-
-# ---------------------------------------------------------
-# RECETAS
-# ---------------------------------------------------------
-
-class IncompatibleMeal(ValueError):
-    """Se intenta poner una receta de 'comida' en una cena (o al revés)."""
-
+# Recetas
 
 def fits_meal(recipe_type, meal):
     """Una receta 'ambos' o 'extra' vale para cualquier hueco; las demás, solo para el suyo."""
     return recipe_type in ("ambos", "extra", meal)
 
 
-def _clean_qty(qty):
-    """SQLite devuelve REAL (200.0); lo mostramos como 200 si es entero."""
-    if qty is None or isinstance(qty, str):
-        return qty
-    return int(qty) if float(qty).is_integer() else qty
-
-
-def _ingredient_dict(row):
-    return {"name": row["name"], "qty": _clean_qty(row["qty"]), "unit": row["unit"]}
-
-
-def _group_recipes(recipe_rows, ingredient_rows):
-    recipes = {
-        r["id"]: {"id": r["id"], "name": r["name"], "type": r["type"],
-                  "servings": r["servings"], "preparation": json.loads(r["preparation"]),
-                  "notes": r["notes"], "ingredients": []}
-        for r in recipe_rows
-    }
-    for ing in ingredient_rows:
-        recipe = recipes.get(ing["recipe_id"])
-        if recipe is not None:
-            recipe["ingredients"].append(_ingredient_dict(ing))
+def _load_recipes(conn, recipe_id=None):
+    query = """
+        SELECT r.id, r.name, r.type, r.servings, r.preparation, r.notes,
+               i.id AS ingredient_id, i.name AS ingredient, i.qty, i.unit
+        FROM recipes r LEFT JOIN ingredients i ON r.id = i.recipe_id
+    """
+    if recipe_id is not None:
+        query += " WHERE r.id = ?"
+    params = () if recipe_id is None else (recipe_id,)
+    recipes = {}
+    for row in conn.execute(query + " ORDER BY r.id, i.position, i.id", params):
+        rid = row["id"]
+        if rid not in recipes:
+            recipes[rid] = {"id": rid, "name": row["name"], "type": row["type"],
+                            "servings": row["servings"], "preparation": json.loads(row["preparation"]),
+                            "notes": row["notes"], "ingredients": []}
+        if row["ingredient_id"] is not None:
+            recipes[rid]["ingredients"].append(
+                dict(name=row["ingredient"], qty=display_quantity(row["qty"]), unit=row["unit"])
+            )
     return recipes
 
 
-def _write_ingredients(conn, recipe_id, ingredients):
-    rows = []
-    for ing in ingredients:
-        name = collapse_spaces(ing["name"])
-        if name:
-            qty = ing.get("qty")
-            unit = normalize_unit(ing.get("unit"))
-            rows.append((recipe_id, len(rows), name, qty, unit))
-    conn.executemany(
-        "INSERT INTO ingredients (recipe_id, position, name, qty, unit) VALUES (?, ?, ?, ?, ?)",
-        rows,
-    )
-
-
-def create_recipe(name, ingredients, recipe_type="ambos", servings=2, preparation=None, notes=""):
+def save_recipe(name, ingredients, recipe_type="ambos", servings=2, preparation=None, notes="",
+                *, recipe_id=None):
     if recipe_type not in RECIPE_TYPES:
-        raise ValueError(f"Tipo de receta no válido: {recipe_type}")
+        raise ValueError("Tipo no válido (usa: " + ", ".join(RECIPE_TYPES) + ")")
+    values = (collapse_spaces(name), recipe_type, servings, json.dumps(preparation or []), notes)
     with connection() as conn:
-        cur = conn.execute(
-            "INSERT INTO recipes (name, type, servings, preparation, notes) VALUES (?, ?, ?, ?, ?)",
-            (collapse_spaces(name), recipe_type, servings, json.dumps(preparation or []), notes),
-        )
-        recipe_id = cur.lastrowid
-        _write_ingredients(conn, recipe_id, ingredients)
-    return get_recipe(recipe_id)
+        if recipe_id is None:
+            recipe_id = conn.execute(
+                "INSERT INTO recipes (name, type, servings, preparation, notes) VALUES (?, ?, ?, ?, ?)",
+                values,
+            ).lastrowid
+        else:
+            updated = conn.execute(
+                "UPDATE recipes SET name=?, type=?, servings=?, preparation=?, notes=? WHERE id=?",
+                (*values, recipe_id),
+            )
+            if not updated.rowcount:
+                return None
+            conn.execute("DELETE FROM ingredients WHERE recipe_id=?", (recipe_id,))
+            if recipe_type in MEALS:
+                conn.execute("UPDATE menu SET recipe_id=NULL, people=NULL WHERE recipe_id=? AND meal != ?",
+                             (recipe_id, recipe_type))
 
-
-def update_recipe(recipe_id, name, ingredients, recipe_type="ambos", servings=2, preparation=None, notes=""):
-    """Mantiene el ID y las referencias del menú; reemplaza ingredientes de forma atómica."""
-    with connection() as conn:
-        cur = conn.execute(
-            "UPDATE recipes SET name=?, type=?, servings=?, preparation=?, notes=? WHERE id=?",
-            (collapse_spaces(name), recipe_type, servings, json.dumps(preparation or []), notes, recipe_id),
+        rows = []
+        for ingredient in ingredients:
+            name = collapse_spaces(ingredient["name"])
+            if name:
+                rows.append((recipe_id, len(rows), name, ingredient.get("qty"),
+                             normalize_unit(ingredient.get("unit"))))
+        conn.executemany(
+            "INSERT INTO ingredients (recipe_id, position, name, qty, unit) VALUES (?, ?, ?, ?, ?)",
+            rows,
         )
-        if not cur.rowcount:
-            return None
-        conn.execute("DELETE FROM ingredients WHERE recipe_id=?", (recipe_id,))
-        _write_ingredients(conn, recipe_id, ingredients)
-        # Un cambio de tipo solo vacía los huecos que ya no admiten la receta.
-        if recipe_type in MEALS:
-            conn.execute("UPDATE menu SET recipe_id=NULL, people=NULL WHERE recipe_id=? AND meal != ?",
-                         (recipe_id, recipe_type))
-    return get_recipe(recipe_id)
+        return _load_recipes(conn, recipe_id)[recipe_id]
 
 
 def get_recipe(recipe_id):
     try:
         recipe_id = int(recipe_id)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
-
+    if not -(2**63) <= recipe_id < 2**63:
+        return None
     with connection() as conn:
-        recipe = conn.execute(
-            "SELECT id, name, type, servings, preparation, notes FROM recipes WHERE id = ?", (recipe_id,)
-        ).fetchone()
-        if recipe is None:
-            return None
-        ingredients = conn.execute(
-            "SELECT recipe_id, name, qty, unit FROM ingredients "
-            "WHERE recipe_id = ? ORDER BY position, id",
-            (recipe_id,),
-        ).fetchall()
-
-    return _group_recipes([recipe], ingredients)[recipe_id]
+        return _load_recipes(conn, recipe_id).get(recipe_id)
 
 
 def get_all_recipes():
     with connection() as conn:
-        recipe_rows = conn.execute(
-            "SELECT id, name, type, servings, preparation, notes FROM recipes ORDER BY id"
-        ).fetchall()
-        ingredient_rows = conn.execute(
-            "SELECT recipe_id, name, qty, unit FROM ingredients "
-            "ORDER BY recipe_id, position, id"
-        ).fetchall()
-    return list(_group_recipes(recipe_rows, ingredient_rows).values())
+        return list(_load_recipes(conn).values())
 
 
 def delete_recipe(recipe_id):
@@ -313,93 +203,81 @@ def delete_recipe(recipe_id):
 
 
 def find_duplicate_recipe(ingredients):
-    """
-    Busca una receta guardada con EXACTAMENTE el mismo conjunto de ingredientes.
-    Se comparan nombres normalizados, sin importar el orden ni las cantidades.
-    Devuelve {"id", "name"} de la primera coincidencia, o None.
-    """
-    wanted = {ingredient_key(i.get("name")) for i in ingredients}
-    wanted.discard("")
-    if not wanted:  # sin ingredientes no hay nada con lo que comparar
-        return None
-
-    with connection() as conn:
-        rows = conn.execute(
-            "SELECT r.id, r.name, i.name AS ingredient "
-            "FROM recipes r JOIN ingredients i ON i.recipe_id = r.id "
-            "ORDER BY r.id"
-        ).fetchall()
-
-    stored = {}
-    for row in rows:
-        entry = stored.setdefault(row["id"], {"id": row["id"], "name": row["name"], "set": set()})
-        entry["set"].add(ingredient_key(row["ingredient"]))
-
-    for entry in stored.values():
-        if entry["set"] == wanted:
-            return {"id": entry["id"], "name": entry["name"]}
+    """Primera receta con el mismo conjunto de nombres, sin orden ni cantidades."""
+    wanted = {ingredient_key(i["name"]) for i in ingredients} - {""}
+    if wanted:
+        for recipe in get_all_recipes():
+            if {ingredient_key(i["name"]) for i in recipe["ingredients"]} == wanted:
+                return {key: recipe[key] for key in ("id", "name")}
     return None
 
 
-# ---------------------------------------------------------
-# MENÚ SEMANAL (comida y cena de cada día activo)
-# ---------------------------------------------------------
+# Menú semanal
+
+SLOT_UPDATE = "UPDATE menu SET recipe_id=?, people=? WHERE day=? AND meal=?"
+
+
+def _menu_pools(conn):
+    pools = {kind: [] for kind in (*MEALS, "ambos")}
+    for row in conn.execute("SELECT id, type FROM recipes WHERE type != 'extra'"):
+        pools[row["type"]].append(row["id"])
+    return pools
+
+
+def _menu_shortages(pools):
+    return {meal: max(0, len(DAYS) - len(pools[meal])) for meal in MEALS}
+
 
 def menu_status():
-    """
-    ¿Hay recetas suficientes para una semana sin repetir ningún plato?
-    Con N días activos (2N huecos), sin contar las 'extra', se necesita a la vez:
-        comidas + ambos >= N      cenas + ambos >= N      comidas + cenas + ambos >= 2N
-    """
-    counts = {"comida": 0, "cena": 0, "ambos": 0}
     with connection() as conn:
-        rows = conn.execute(
-            "SELECT type, COUNT(*) AS n FROM recipes WHERE type != 'extra' GROUP BY type"
-        ).fetchall()
-    for row in rows:
-        counts[row["type"]] = row["n"]
-
-    n = len(DAYS)
-    c, d, a = counts["comida"], counts["cena"], counts["ambos"]
-    enough = c + a >= n and d + a >= n and c + d + a >= 2 * n
-    return {"enough": enough, "days": n, "counts": counts}
+        pools = _menu_pools(conn)
+    return {
+        "enough": sum(_menu_shortages(pools).values()) <= len(pools["ambos"]),
+        "days": len(DAYS),
+        "counts": {kind: len(ids) for kind, ids in pools.items()},
+    }
 
 
 def get_menu():
-    """Devuelve {dia: {"comida": receta_o_None, "cena": receta_o_None}} solo de los días activos."""
-    recipes = {r["id"]: r for r in get_all_recipes()}
-    menu = {day: {meal: None for meal in MEALS} for day in DAYS}
-    for row in read_menu():
-        if row["day"] in menu:  # ignora filas de días inactivos (p. ej. sábado)
+    menu = {day: dict.fromkeys(MEALS) for day in DAYS}
+    with connection() as conn:
+        conn.execute("BEGIN")  # Usa la misma vista de SQLite para el menú y sus recetas.
+        recipes = _load_recipes(conn)
+        for row in conn.execute("SELECT day, meal, recipe_id, people FROM menu"):
             recipe = recipes.get(row["recipe_id"])
-            menu[row["day"]][row["meal"]] = (
-                dict(recipe, people=row["people"]) if recipe else None
-            )
+            if row["day"] in menu and recipe:
+                menu[row["day"]][row["meal"]] = dict(recipe, people=row["people"])
     return menu
 
 
 def set_menu_slot(day, meal, recipe_id, people=None):
     with connection() as conn:
-        conn.execute(
-            "UPDATE menu SET recipe_id = ?, people = ? WHERE day = ? AND meal = ?",
-            (recipe_id, people, day, meal),
-        )
+        conn.execute(SLOT_UPDATE, (recipe_id, people, day, meal))
 
 
-def replace_menu(assignments, people=None):
-    """
-    Vacía el menú y asigna {(dia, comida): recipe_id} de golpe (una transacción).
-    Al ser un menú nuevo, también se desmarca la lista de la compra.
-    """
+def generate_menu(people):
     with connection() as conn:
-        conn.execute("UPDATE menu SET recipe_id = NULL, people = NULL")
-        conn.executemany(
-            "UPDATE menu SET recipe_id = ?, people = ? WHERE day = ? AND meal = ?",
-            [(rid, people, day, meal) for (day, meal), rid in assignments.items()],
-        )
+        conn.execute("BEGIN IMMEDIATE")
+        pools = _menu_pools(conn)
+        shortages = _menu_shortages(pools)
+        wildcards = pools["ambos"]
+        if sum(shortages.values()) > len(wildcards):
+            raise ValueError("No hay suficientes recetas")
+
+        # Reparte primero las exclusivas y usa cada comodín a lo sumo una vez.
+        random.shuffle(wildcards)
+        assignments = []
+        for meal in MEALS:
+            exclusive = pools[meal]
+            random.shuffle(exclusive)
+            recipes = exclusive[:len(DAYS)] + [wildcards.pop() for _ in range(shortages[meal])]
+            random.shuffle(recipes)
+            assignments.extend((rid, people, day, meal) for day, rid in zip(DAYS, recipes))
+
+        conn.execute("UPDATE menu SET recipe_id=NULL, people=NULL")
+        conn.executemany(SLOT_UPDATE, assignments)
         conn.execute("DELETE FROM shopping_checked")
-        if people is not None:
-            _save_week_people(conn, people)
+        _save_week_people(conn, people)
 
 
 def get_week_people():
@@ -422,75 +300,31 @@ def set_week_people(people):
 
 
 def swap_menu_slots(day1, meal1, day2, meal2):
-    """
-    Intercambia las recetas de dos huecos (drag & drop). Solo se valida que cada
-    receta encaje en su nuevo hueco (una 'comida' no va en una cena); repetir
-    recetas está permitido.
-    """
+    """Intercambia receta y comensales en una misma transacción."""
     with connection() as conn:
-        rows = conn.execute(
+        conn.execute("BEGIN IMMEDIATE")
+        slots = {(row["day"], row["meal"]): row for row in conn.execute(
             "SELECT m.day, m.meal, m.recipe_id, m.people, r.type "
             "FROM menu m LEFT JOIN recipes r ON r.id = m.recipe_id "
             "WHERE (m.day = ? AND m.meal = ?) OR (m.day = ? AND m.meal = ?)",
             (day1, meal1, day2, meal2),
-        ).fetchall()
-        slots = {(r["day"], r["meal"]): (r["recipe_id"], r["type"], r["people"]) for r in rows}
-
-        id1, type1, people1 = slots.get((day1, meal1), (None, None, None))
-        id2, type2, people2 = slots.get((day2, meal2), (None, None, None))
-
-        if id2 is not None and not fits_meal(type2, meal1):
-            raise IncompatibleMeal("Esa receta no es válida para ese hueco del menú.")
-        if id1 is not None and not fits_meal(type1, meal2):
-            raise IncompatibleMeal("Esa receta no es válida para ese hueco del menú.")
-
-        conn.execute(
-            "UPDATE menu SET recipe_id = ?, people = ? WHERE day = ? AND meal = ?",
-            (id2, people2, day1, meal1),
-        )
-        conn.execute(
-            "UPDATE menu SET recipe_id = ?, people = ? WHERE day = ? AND meal = ?",
-            (id1, people1, day2, meal2),
-        )
+        )}
+        changes = []
+        first, second = (day1, meal1), (day2, meal2)
+        for source, target in ((first, second), (second, first)):
+            row = slots.get(source)
+            if row and row["recipe_id"] is not None and not fits_meal(row["type"], target[1]):
+                raise ValueError("Esa receta no es válida para ese hueco del menú.")
+            changes.append((row["recipe_id"] if row else None, row["people"] if row else None, *target))
+        conn.executemany(SLOT_UPDATE, changes)
 
 
-def clear_menu():
-    with connection() as conn:
-        conn.execute("UPDATE menu SET recipe_id = NULL, people = NULL")
-        conn.execute("DELETE FROM shopping_checked")
-
-
-# ---------------------------------------------------------
-# LISTA DE LA COMPRA (suma de ingredientes del menú actual)
-# ---------------------------------------------------------
-
-def shopping_unit(unit):
-    aliases = {
-        "kg": ("g", 1000), "kilogramo": ("g", 1000), "kilogramos": ("g", 1000),
-        "gramos": ("g", 1), "gr": ("g", 1), "gramo": ("g", 1),
-        "l": ("ml", 1000), "litro": ("ml", 1000), "litros": ("ml", 1000),
-        "mililitro": ("ml", 1), "mililitros": ("ml", 1),
-        "cucharada": ("cda", 1), "cucharadas": ("cda", 1),
-        "cucharadita": ("cdta", 1), "cucharaditas": ("cdta", 1),
-        "tazas": ("taza", 1),
-        "ud": ("uds", 1), "unidad": ("uds", 1), "unidades": ("uds", 1),
-    }
-    canonical, factor = aliases.get(unit, (unit, 1))
-    return canonical, Decimal(factor)
-
+# Compra
 
 def get_shopping_list():
-    """
-    Suma los ingredientes de todas las comidas y cenas de los días activos.
-
-    - Se agrupa por nombre normalizado + unidad (1 Cebolla + 0.5 Cebolla = 1.5 Cebolla).
-    - Sin unidad equivale a "uds" (así "1 cebolla" y "0.5 uds de cebolla" se suman).
-    - Las cantidades desconocidas y textuales se conservan junto a las numéricas.
-    - Una receta repetida en varios huecos cuenta tantas veces como aparezca.
-    - Cada elemento lleva "checked": si ya está comprado / en casa (se guarda en la BD).
-    """
     marks = ", ".join("?" for _ in DAYS)
     with connection() as conn:
+        conn.execute("BEGIN")
         rows = conn.execute(
             "SELECT i.name, i.qty, i.unit, m.people, r.servings "
             "FROM menu m JOIN recipes r ON r.id = m.recipe_id "
@@ -498,64 +332,20 @@ def get_shopping_list():
             f"WHERE m.day IN ({marks})",
             DAYS,
         ).fetchall()
-        checked = {
-            (r["name"], r["unit"])
-            for r in conn.execute("SELECT name, unit FROM shopping_checked")
-        }
-
-    totals = {}
-    unknown = set()
-    text_quantities = set()
-    for r in rows:
-        name = ingredient_key(r["name"])
-        if not name:
-            continue
-        raw_unit = normalize_unit(r["unit"])
-        qty = parse_quantity(r["qty"])
-        if qty is None:
-            # Conserva también la ausencia de cantidad aunque haya otra numérica.
-            unit = shopping_unit(raw_unit)[0] if raw_unit else None
-            if r["qty"] is None:
-                unknown.add((name, unit))
-            else:
-                text_quantities.add((name, str(r["qty"]), unit))
-            continue
-        unit, multiplier = shopping_unit(raw_unit or "uds")
-        qty *= multiplier * Decimal(r["people"] or r["servings"]) / Decimal(r["servings"])
-        totals[(name, unit)] = totals.get((name, unit), Decimal(0)) + qty
-
-    items = [{"name": name, "unit": unit, "qty": _clean_qty(float(round(qty, 6)))}
-             for (name, unit), qty in totals.items()]
-    items += [{"name": name, "qty": qty, "unit": unit} for name, qty, unit in text_quantities]
-    items += [{"name": name, "qty": None, "unit": unit} for name, unit in unknown]
-    items.sort(key=lambda item: (item["name"], item["unit"] or "", str(item["qty"])))
-    # Lee claves antiguas sin reescribir recetas ni marcas. Solo unidades compatibles.
-    checked_keys = {(ingredient_key(name), shopping_unit(normalize_unit(unit))[0] or "")
-                    for name, unit in checked}
-    for item in items:
-        item["checked"] = (item["name"], item["unit"] or "") in checked_keys
-    return items
+        checked = {shopping_key(row["name"], row["unit"]) for row in
+                   conn.execute("SELECT name, unit FROM shopping_checked")}
+    return group_shopping(rows, checked)
 
 
 def set_shopping_checked(name, unit, checked):
-    """Marca o desmarca un ingrediente de la lista de la compra."""
-    key_name = ingredient_key(name)
-    key_unit = shopping_unit(normalize_unit(unit))[0] or ""
-    if not key_name:
+    key = shopping_key(name, unit)
+    if not key[0]:
         raise ValueError("Ingrediente no válido")
-
     with connection() as conn:
-        # Desmarca también alias heredados para que no reaparezcan al recargar.
-        for row in conn.execute("SELECT name, unit FROM shopping_checked").fetchall():
-            if (ingredient_key(row["name"]), shopping_unit(normalize_unit(row["unit"]))[0] or "") == (key_name, key_unit):
-                conn.execute("DELETE FROM shopping_checked WHERE name=? AND unit=?", (row["name"], row["unit"]))
+        conn.execute("BEGIN IMMEDIATE")
+        # Borra también marcas antiguas equivalentes para que no reaparezcan.
+        previous = conn.execute("SELECT name, unit FROM shopping_checked").fetchall()
+        conn.executemany("DELETE FROM shopping_checked WHERE name=? AND unit=?",
+                         (row for row in previous if shopping_key(*row) == key))
         if checked:
-            conn.execute(
-                "INSERT OR IGNORE INTO shopping_checked (name, unit) VALUES (?, ?)",
-                (key_name, key_unit),
-            )
-        else:
-            conn.execute(
-                "DELETE FROM shopping_checked WHERE name = ? AND unit = ?",
-                (key_name, key_unit),
-            )
+            conn.execute("INSERT OR IGNORE INTO shopping_checked (name, unit) VALUES (?, ?)", key)

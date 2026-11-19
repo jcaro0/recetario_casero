@@ -126,7 +126,7 @@ class RecipeTests(unittest.TestCase):
         self.client.delete(f'/recipes/{a["id"]}')
         self.assertIsNone(self.client.get("/menu").json["lunes"]["cena"]["name"])
         self.assertEqual(self.quantities()[("Arroz", "g")], 100)
-        db.replace_menu({("lunes", "comida"): b["id"]})
+        self.plan(b)
         self.assertIsNone(self.client.get("/menu").json["lunes"]["comida"]["people"])
 
     def test_random_menu_and_edit_type(self):
@@ -142,6 +142,25 @@ class RecipeTests(unittest.TestCase):
         self.assertEqual(self.client.put(f'/recipes/{recipe["id"]}', json=recipe).status_code, 200)
         self.assertIsNone(self.client.get("/menu").json["lunes"]["cena"]["name"])
         self.assertIsNotNone(self.client.get("/menu").json["lunes"]["comida"]["name"])
+
+    def test_menu_generation_and_picker_respect_recipe_types(self):
+        lunches = [self.create(type="comida") for _ in db.DAYS]
+        dinners = [self.create(type="cena") for _ in db.DAYS[1:]]
+        extra = self.create(type="extra")
+        self.assertFalse(self.client.get("/menu/status").json["enough"])
+        self.assertEqual(self.client.post("/menu/generate", json={"people": 3}).status_code, 400)
+        wildcard = self.create(type="ambos")
+        self.assertTrue(self.client.get("/menu/status").json["enough"])
+        self.assertEqual(self.client.post("/menu/generate", json={"people": 3}).status_code, 200)
+
+        menu = self.client.get("/menu").json
+        self.assertEqual({day["comida"]["id"] for day in menu.values()}, {r["id"] for r in lunches})
+        self.assertEqual({day["cena"]["id"] for day in menu.values()}, {r["id"] for r in dinners + [wildcard]})
+        choices = self.client.get("/recipes?meal=cena").json
+        self.assertEqual({r["id"] for r in choices["recipes"]}, {r["id"] for r in dinners + [wildcard, extra]})
+        swap = {"day1": db.DAYS[0], "meal1": "comida", "day2": db.DAYS[0], "meal2": "cena"}
+        self.assertEqual(self.client.post("/menu/swap", json=swap).status_code, 400)
+        self.assertEqual(self.client.get("/menu").json, menu)
 
     def test_week_people_generate_bulk_persist_and_empty_slots(self):
         self.assertEqual(self.client.get('/menu/people').json, {'people': 2})
@@ -178,7 +197,7 @@ class RecipeTests(unittest.TestCase):
         db.set_menu_slot('sábado', 'comida', recipe['id'], 100)
         self.assertEqual(db.get_shopping_list(), [])
         self.client.post('/menu/people', json={'people': 6})
-        self.assertFalse(any(row['recipe_id'] for row in db.read_menu() if row['day'] != 'sábado'))
+        self.assertTrue(all(slot is None for meals in db.get_menu().values() for slot in meals.values()))
         self.client.post('/menu/lunes/comida', json={'recipe_id':recipe['id']})
         self.assertEqual(self.quantities(), {('Leche','ml'):6000, ('Leche','cda'):3, ('Leche','cdta'):3})
         self.assertEqual(db.get_recipe(recipe['id']), recipe)
@@ -188,10 +207,14 @@ class RecipeTests(unittest.TestCase):
         with db.connection() as conn:
             conn.execute("CREATE TRIGGER fail_people BEFORE UPDATE OF people ON menu "
                          "WHEN NEW.day='martes' BEGIN SELECT RAISE(ABORT, 'test failure'); END")
-        before = db.read_menu()
+        def slots():
+            with db.connection() as conn:
+                return [tuple(row) for row in conn.execute("SELECT * FROM menu ORDER BY day, meal")]
+
+        before = slots()
         with self.assertRaises(sqlite3.IntegrityError):
             db.set_week_people(7)
-        self.assertEqual(db.read_menu(), before)
+        self.assertEqual(slots(), before)
         self.assertEqual(db.get_week_people(), 2)
 
     def test_aliases_fraction_units_and_original_names(self):

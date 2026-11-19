@@ -24,7 +24,7 @@ def run():
         db.DB_PATH = str(root / 'active.db')
         db._ready = False
         set_up.initialize()
-        saved = db.create_recipe('Sobrevive al reinicio', [{'name': 'Sal'}])
+        saved = db.save_recipe('Sobrevive al reinicio', [{'name': 'Sal'}])
         venv = root / 'venv'
         (venv / 'bin').mkdir(parents=True)
         (venv / 'bin/python').write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' "$@"\n')
