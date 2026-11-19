@@ -1,17 +1,16 @@
-let pendingRecipe = null;
 let editingRecipeId = null;
 let savingRecipe = false;
 
 document.addEventListener("DOMContentLoaded", () => {
-    setupDuplicateModal();
     byId("recipeForm").addEventListener("submit", saveRecipe);
+    byId("recipeName").oninput = event => event.target.setCustomValidity("");
     byId("recipeForm").addEventListener("keydown", advanceOnEnter);
     byId("addStep").onclick = () => addPreparationStep().focus();
+    byId("cancelRecipe").onclick = event => { if (savingRecipe) event.preventDefault(); };
     loadRecipeForm();
     document.addEventListener("recetario:refreshed", event => {
         if (event.detail.recovered) loadRecipeForm();
     });
-    document.addEventListener("recetario:locked", () => { pendingRecipe = null; });
 });
 
 async function loadRecipeForm() {
@@ -28,10 +27,10 @@ async function loadRecipeForm() {
             editingRecipeId = Number(id);
             const recipe = await api(`/recipes/${editingRecipeId}`);
             document.title = "Editar receta";
-            byId("recipeForm").querySelector(".submitButton").lastChild.textContent = " Guardar cambios";
-            document.querySelector(".recipeHero h1").textContent = "Editar receta";
-            document.querySelector(".logo span").textContent = "Editar receta";
-            byId("typeChangeHint").classList.remove("hidden");
+            byId("saveRecipeLabel").textContent = "Guardar cambios";
+            byId("recipeHeading").textContent = "Editar receta";
+            byId("pageBrand").textContent = "Editar receta";
+            byId("typeChangeHint").hidden = false;
             byId("recipeName").value = recipe.name;
             byId("recipeServings").value = recipe.servings || 2;
             byId(`type-${recipe.type || "ambos"}`).checked = true;
@@ -174,79 +173,75 @@ function resetRecipeForm() {
     byId("preparationList").replaceChildren();
 }
 
-async function submitRecipe(recipe) {
-    if (!canWrite() || savingRecipe) return;
-    savingRecipe = true;
-    byId("recipeFields").disabled = true;
-    try {
-        if (editingRecipeId === null) {
-            await api("/recipes", "POST", recipe);
-        } else {
-            await api(`/recipes/${editingRecipeId}`, "PUT", recipe);
-        }
-        if (editingRecipeId !== null) location.href = "recetas.html";
-        else { resetRecipeForm(); byId("formStatus").textContent = "Receta guardada."; }
-    } catch (err) {
-        byId("formStatus").textContent = "No se pudo guardar: " + err.message;
-    } finally {
-        savingRecipe = false;
-        byId("recipeFields").disabled = false;
-        applyWriteAccess();
+function setRecipeSaving(saving) {
+    savingRecipe = saving;
+    byId("recipeFields").disabled = saving;
+    byId("formStatus").textContent = saving ? "Guardando receta…" : "";
+    if (!saving) applyWriteAccess();
+}
+
+function writeRecipe(recipe) {
+    return editingRecipeId === null
+        ? api("/recipes", "POST", recipe)
+        : api(`/recipes/${editingRecipeId}`, "PUT", recipe);
+}
+
+function recipeSaved() {
+    if (editingRecipeId === null) {
+        resetRecipeForm();
+        notify("Receta añadida correctamente", "success");
+    } else {
+        navigateWithNotice("recetas.html", "Cambios de la receta guardados");
     }
 }
 
-async function saveRecipe(e) {
-    e.preventDefault();
-    // Solo el botón Guardar puede enviar: ningún envío implícito desde otro campo.
-    if (!canWrite() || !e.submitter?.matches('.submitButton') || savingRecipe) return;
+async function saveRecipe(event) {
+    event.preventDefault();
+    const trigger = event.submitter;
+    if (!canWrite() || !trigger?.matches(".submitButton") || savingRecipe) return;
     if (!byId("recipeForm").reportValidity()) return;
     const recipe = collectRecipe();
-    if (!recipe.name) { byId("recipeName").focus(); return; }
+    if (!recipe.name) {
+        const name = byId("recipeName");
+        name.setCustomValidity("Escribe el nombre de la receta.");
+        name.reportValidity();
+        return;
+    }
     if (!recipe.ingredients.length) {
         const input = document.querySelector(".ingredient-name");
-        input.setCustomValidity("Añade al menos un ingrediente"); input.reportValidity(); return;
+        input.setCustomValidity("Añade al menos un ingrediente");
+        input.reportValidity();
+        return;
     }
-    byId("formStatus").textContent = "Guardando receta…";
-    if (editingRecipeId !== null) { await submitRecipe(recipe); return; }
-    // Se mantiene la comprobación de duplicados para las recetas nuevas.
-    savingRecipe = true;
+
+    let duplicate;
+    dismissToast();
+    setRecipeSaving(true);
     try {
-        const result = await api("/recipes/check-duplicate", "POST", { ingredients: recipe.ingredients });
-        savingRecipe = false;
-        if (result.duplicate) openDuplicateModal(recipe, result.duplicate.name);
-        else await submitRecipe(recipe);
-    } catch (err) {
-        byId("formStatus").textContent = "No se pudo comprobar la receta: " + err.message;
-    } finally { savingRecipe = false; }
-}
+        if (editingRecipeId === null) {
+            const result = await api("/recipes/check-duplicate", "POST", { ingredients: recipe.ingredients });
+            duplicate = result.duplicate;
+        }
+        if (!duplicate) await writeRecipe(recipe);
+    } catch (error) {
+        notify("No se pudo guardar la receta. " + error.message, "error");
+        return;
+    } finally {
+        setRecipeSaving(false);
+        if (canWrite()) trigger.focus({ preventScroll: true });
+    }
 
-// ---------------------------------------------------------
-// Modal de receta duplicada
-// ---------------------------------------------------------
-
-function setupDuplicateModal() {
-    byId("duplicateYes").onclick = async () => {
-        const recipe = pendingRecipe;
-        closeDuplicateModal();
-        if (recipe) await submitRecipe(recipe); // guarda y limpia el formulario
-    };
-
-    // "No" (o tocar fuera / Escape): se cierra sin guardar y el formulario se queda como está
-    byId("duplicateNo").onclick = closeDuplicateModal;
-
-    dismissModalOnBackdropOrEscape("duplicateModal", closeDuplicateModal);
-}
-
-function openDuplicateModal(recipe, existingName) {
-    pendingRecipe = recipe;
-    byId("formStatus").textContent = "Ya existe una receta con estos ingredientes. Confirma si quieres añadir otra.";
-    byId("duplicateModalText").textContent =
-        `Esta es la misma receta que: ${existingName}? Quiere agregarla?`;
-    byId("duplicateModal").classList.remove("hidden");
-    byId("duplicateNo").focus();
-}
-
-function closeDuplicateModal() {
-    pendingRecipe = null;
-    byId("duplicateModal").classList.add("hidden");
+    if (!duplicate) {
+        recipeSaved();
+        return;
+    }
+    confirmAction({
+        title: "Ya hay una receta con esos ingredientes",
+        message: `«${duplicate.name}» tiene los mismos ingredientes. ¿Quieres guardar otra receta?`,
+        label: "Guardar receta",
+        trigger,
+        action: () => writeRecipe(recipe),
+        onSuccess: recipeSaved,
+        errorPrefix: "No se pudo guardar la receta. "
+    });
 }

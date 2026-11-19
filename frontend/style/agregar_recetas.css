@@ -1,127 +1,179 @@
 .recipe-form {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-}
-
-.recipe-form label {
-    font-weight: 600;
-    color: var(--brown-darker);
-}
-
-.recipe-form input {
-    padding: 14px;
-    border-radius: 14px;
-    border: 1px solid #E2D2BC;
-    font-size: 15px;
+    padding: clamp(14px, 3vw, 26px);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
     background: var(--surface);
-    color: var(--text);
 }
 
-.ingredients-header {
+.recipe-form fieldset {
+    display: grid;
+    gap: 9px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.recipe-form h2 {
+    margin: 12px 0 3px;
+    padding-top: 15px;
+    border-top: 1px solid var(--line);
+    color: var(--brown-darker);
+    font: 700 1.3rem/1.2 var(--heading-font);
+}
+
+.recipe-form h2:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
+
+.recipe-form h2 small {
+    color: var(--muted);
+    font: 400 .85rem/1.3 system-ui, sans-serif;
+}
+
+#recipeServings {
+    width: 8.5rem;
+}
+
+.segmented {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: var(--control-radius);
+    background: #f8f2e8;
+}
+
+.segmented input[type="radio"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.segmented-option {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-top: 20px;
+    justify-content: center;
+    gap: 5px;
+    min-height: 44px;
+    padding: 4px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    font-size: .83rem;
+    cursor: pointer;
+    transition: background-color .15s ease;
+}
+
+.segmented-option .material-symbols-rounded {
+    font-size: 19px;
+}
+
+.segmented input:checked + .segmented-option {
+    border-color: #dcbf89;
+    background: var(--yellow-light);
+}
+
+.segmented input:focus-visible + .segmented-option {
+    outline: 2px solid var(--brown-dark);
+    outline-offset: -2px;
 }
 
 .ingredient-row {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr 42px;
+    grid-template-columns: minmax(0, 1fr) minmax(7rem, .45fr) minmax(9.5rem, .55fr) 44px;
+    align-items: start;
     gap: 8px;
-    margin-bottom: 10px;
-    align-items: center;
 }
 
-.ingredient-row input, 
-.ingredient-row select {
+.ingredient-row + .ingredient-row {
+    margin-top: 8px;
+}
+
+.ingredient-row input {
     width: 100%;
-    min-width: 0;
-    padding: 12px;
-    border-radius: 14px;
-    border: 1.5px solid var(--brown);
-    font-size: 15px;
-    background: var(--surface);
-    color: var(--text);
-    font-family: inherit;
-    box-sizing: border-box;
-    transition: background-color .2s ease, border-color .2s ease, color .2s ease;
 }
 
-.ingredient-row.ghost input, 
-.ingredient-row.ghost select {
-    background: rgba(124, 109, 94, .08);
-    border-color: #9A8D7D;
-    color: var(--muted);
-}
-
-.ingredient-row.ghost input::placeholder {
-    color: var(--muted);
-}
-
-.ingredient-row.ghost .deleteIngredient {
-    opacity: .4;
+.ghost input, .ghost select {
+    background: #faf5ed;
 }
 
 .deleteIngredient {
-    background: #F7DEDA;
-    color: #B9463C;
-    border: none;
-    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    width: 44px;
     height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 15px;
-}
-
-.submitButton {
-    justify-content: center;
-    margin-top: 10px;
-}
-
-@media (max-width: 600px) {
-    .ingredient-row {
-        grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 1.1fr) 36px;
-        gap: 5px;
-    }
-    .ingredient-row input,
-    .ingredient-row select {
-        padding: 9px 6px;
-        font-size: 13px;
-        border-radius: 10px;
-    }
-    .deleteIngredient {
-        height: 38px;
-        border-radius: 10px;
-        padding: 0;
-    }
-}
-.recipe-form fieldset {
-    border: 0;
     padding: 0;
-    min-width: 0;
+    border-radius: var(--control-radius);
+    background: transparent;
+    color: var(--danger);
+}
+
+.deleteIngredient:hover, .deleteIngredient:active {
+    background: var(--danger-soft);
+}
+
+.ghost .deleteIngredient {
+    color: var(--muted);
+}
+
+.form-hint {
+    color: var(--muted);
+    font-size: .8rem;
+}
+
+.preparation-row {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.step-actions {
     display: flex;
-    flex-direction: column;
-    gap: 14px;
+    gap: 6px;
 }
-.recipe-form h2 { margin-top: 18px; color: var(--brown-darker); font-size: 20px; }
-.recipe-form h2 small { font-size: 14px; font-weight: normal; }
-.recipe-form textarea {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 14px;
-    border: 1px solid #E2D2BC;
-    border-radius: 14px;
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
-    resize: vertical;
+
+.step-actions button {
+    min-width: 44px;
 }
-.form-hint { color: var(--muted); font-size: 13px; }
-.preparation-row { display: grid; gap: 8px; margin-bottom: 16px; }
-.step-actions { display: flex; gap: 8px; }
-.step-actions button { min-width: 44px; padding: 8px 12px; }
-.cancel-recipe { text-align: center; border-radius: 14px; padding: 14px; text-decoration: none; }
-button:disabled { opacity: .55; cursor: default; }
+
+#addStep {
+    justify-self: start;
+    margin-bottom: 10px;
+}
+
+.recipe-form .form-actions {
+    margin-top: 6px;
+}
+
+@media (max-width: 540px) {
+    .ingredient-row {
+        grid-template-columns: 6rem minmax(0, 1fr) 44px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: var(--control-radius);
+    }
+
+    .ingredient-name {
+        grid-column: 1 / 3;
+    }
+
+    .ingredient-row .deleteIngredient {
+        grid-column: 3;
+        grid-row: 1;
+    }
+
+    .ingredient-row .unit-selector {
+        grid-column: 2 / -1;
+    }
+
+    .segmented-option {
+        flex-direction: column;
+        gap: 2px;
+        font-size: .73rem;
+    }
+}

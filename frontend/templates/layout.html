@@ -15,7 +15,7 @@
 
 <div class="app-header">
     <header class="topbar">
-        <div class="logo">{{ icon }} <span>{{ brand }}</span></div>
+        <div class="logo">{{ icon }} <span id="pageBrand">{{ brand }}</span></div>
         <nav class="top-nav">
             {% for target, symbol, label in [
                 ("menu", "calendar_month", "Menú"),
@@ -36,6 +36,15 @@
         {% endif %}
     </header>
     <p id="connectionStatus" class="connection-status hidden" role="status" aria-live="polite"></p>
+    <div id="toast" class="toast" hidden>
+        <span id="toastIcon" aria-hidden="true"></span>
+        <p id="toastMessage"></p>
+        <button type="button" class="icon-button" id="dismissToast" aria-label="Cerrar notificación">
+            <span class="material-symbols-rounded" aria-hidden="true">close</span>
+        </button>
+    </div>
+    <div id="noticeStatus" class="visually-hidden" role="status"></div>
+    <div id="noticeError" class="visually-hidden" role="alert"></div>
 </div>
 
 {% if can_share %}
@@ -52,6 +61,23 @@
 {% endif %}
 
 {% block content %}{% endblock %}
+
+<dialog id="actionDialog" class="modal" aria-labelledby="actionTitle" aria-describedby="actionDescription" data-write-dialog>
+    <form id="actionForm" class="modal-content">
+        <h2 id="actionTitle"></h2>
+        <p id="actionDescription"></p>
+        <label id="actionNumberField" hidden>
+            <span id="actionNumberLabel"></span>
+            <input id="actionNumber" type="number" min="1" max="2147483647" step="1" required disabled>
+        </label>
+        <p class="dialog-error" role="alert"></p>
+        <p class="dialog-progress" role="status" tabindex="-1"></p>
+        <div class="modal-buttons">
+            <button type="button" class="secondary" data-dialog-close autofocus>Cancelar</button>
+            <button type="submit" id="actionConfirm" class="primary"></button>
+        </div>
+    </form>
+</dialog>
 
 <script src="scripts/script.js"></script>
 <script src="scripts/connection.js"></script>

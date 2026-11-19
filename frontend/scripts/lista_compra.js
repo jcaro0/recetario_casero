@@ -1,8 +1,8 @@
 let shoppingSaving = false;
 let shoppingItems = []; // lista actual (para saber qué ingrediente es cada casilla)
 let editingProduct = null;
-
 let manualUnit;
+let savingManualProduct = false;
 
 document.addEventListener("DOMContentLoaded", () => {
     byId("shoppingList").addEventListener("change", onToggleItem);
@@ -17,9 +17,9 @@ document.addEventListener("DOMContentLoaded", () => {
     document.addEventListener("recetario:locked", resetManualForm);
 });
 
-async function loadShoppingList(showLoading = true) {
+async function loadShoppingList() {
     const container = byId("shoppingList");
-    if (showLoading) container.innerHTML = "<p>Cargando...</p>";
+    if (!container.hasChildNodes()) container.innerHTML = '<p class="loading-state">Cargando compra…</p>';
     try {
         const [menu, shopping] = await Promise.all([
             api("/menu"),
@@ -37,6 +37,7 @@ async function loadShoppingList(showLoading = true) {
         shoppingItems = shopping;
         renderShoppingList();
     } catch (error) {
+        shoppingItems = [];
         container.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
     }
 }
@@ -56,7 +57,7 @@ function renderShoppingList() {
             </label>
             ${item.manual_id ? `<div class="manual-actions">
                 <button type="button" data-write data-action="edit" aria-label="Editar ${escapeHtml(item.name)}">Editar</button>
-                <button type="button" data-write data-action="delete" aria-label="Eliminar ${escapeHtml(item.name)}">Eliminar</button>
+                <button type="button" class="icon-button" data-write data-action="delete" aria-label="Eliminar ${escapeHtml(item.name)}" aria-haspopup="dialog"><span class="material-symbols-rounded" aria-hidden="true">delete</span></button>
             </div>` : ""}
         </div>`;
     const group = checked => shoppingItems.map((item, index) => item.checked === checked ? row(item, index) : "").join("");
@@ -70,32 +71,41 @@ function resetManualForm() {
     byId("manualForm").reset();
     manualUnit.setValue();
     byId("manualSubmit").textContent = "Añadir producto";
-    byId("manualCancel").classList.add("hidden");
+    byId("manualCancel").hidden = true;
     byId("manualStatus").textContent = "";
 }
 
 async function saveManualProduct(event) {
     event.preventDefault();
-    if (!canWrite()) return;
-    const button = byId("manualSubmit");
-    const data = { ...Object.fromEntries(new FormData(event.currentTarget)), unit: manualUnit.value };
-    button.disabled = true;
+    if (!canWrite() || savingManualProduct) return;
+    const form = event.currentTarget;
+    const data = { ...Object.fromEntries(new FormData(form)), unit: manualUnit.value };
+    const id = editingProduct;
+    const fields = byId("manualFields");
+    dismissToast();
+    savingManualProduct = true;
+    fields.disabled = true;
+    byId("manualStatus").textContent = "Guardando producto…";
     try {
         const url = "/shopping-list/manual";
-        if (editingProduct === null) await api(url, "POST", data);
-        else await api(`${url}/${editingProduct}`, "PUT", data);
+        if (id === null) await api(url, "POST", data);
+        else await api(`${url}/${id}`, "PUT", data);
         resetManualForm();
         await loadShoppingList();
+        notify(id === null ? "Producto añadido a la compra" : "Producto actualizado", "success");
     } catch (error) {
-        byId("manualStatus").textContent = error.message;
+        notify("No se pudo guardar el producto. " + error.message, "error");
     } finally {
-        button.disabled = false;
+        savingManualProduct = false;
+        fields.disabled = false;
+        byId("manualStatus").textContent = "";
+        applyWriteAccess();
     }
 }
 
-async function onProductAction(event) {
+function onProductAction(event) {
     const button = event.target.closest("[data-action]");
-    if (!button || !canWrite()) return;
+    if (!button || !canWrite() || savingManualProduct) return;
     const item = shoppingItems[Number(button.closest(".shopping-item").dataset.index)];
     if (button.dataset.action === "edit") {
         editingProduct = item.manual_id;
@@ -104,29 +114,38 @@ async function onProductAction(event) {
         fields.qty.value = item.qty ?? "";
         manualUnit.setValue(item.unit);
         byId("manualSubmit").textContent = "Guardar producto";
-        byId("manualCancel").classList.remove("hidden");
+        byId("manualCancel").hidden = false;
         fields.namedItem("name").focus();
-    } else if (confirm(`¿Eliminar «${item.name}»?`)) {
-        try {
-            await api(`/shopping-list/manual/${item.manual_id}`, "DELETE");
+        return;
+    }
+    confirmAction({
+        title: "¿Eliminar el producto?",
+        message: `«${item.name}» se eliminará de la lista de la compra.`,
+        label: "Eliminar producto",
+        trigger: button,
+        destructive: true,
+        progress: "Eliminando producto…",
+        errorPrefix: "No se pudo eliminar el producto. ",
+        action: () => api(`/shopping-list/manual/${item.manual_id}`, "DELETE"),
+        onSuccess: async () => {
             if (editingProduct === item.manual_id) resetManualForm();
             await loadShoppingList();
-        } catch (error) {
-            byId("manualStatus").textContent = error.message;
+            byId("manualForm").elements.namedItem("name").focus({ preventScroll: true });
+            notify("Producto eliminado de la compra", "success");
         }
-    }
+    });
 }
 
 // Marcar / desmarcar un ingrediente: se guarda en la base de datos
 async function onToggleItem(e) {
     const box = e.target.closest('input[type="checkbox"]');
-    if (!box || shoppingSaving) return;
+    if (!box) return;
 
     const row = box.closest(".shopping-item");
     const item = shoppingItems[Number(row.dataset.index)];
     if (!item) return;
 
-    if (!canWrite()) {
+    if (!canWrite() || shoppingSaving) {
         box.checked = item.checked;
         return;
     }
@@ -141,10 +160,10 @@ async function onToggleItem(e) {
         } else {
             await api("/shopping-list/check", "POST", { name: item.name, unit: item.unit, checked });
         }
-        await loadShoppingList(false);
+        await loadShoppingList();
     } catch (err) {
         box.checked = item.checked;
-        alert("No se pudo guardar: " + err.message);
+        notify("No se pudo actualizar la compra. " + err.message, "error");
     } finally {
         shoppingSaving = false;
         document.querySelectorAll(".shopping-item input").forEach(input => input.disabled = false);
@@ -153,11 +172,12 @@ async function onToggleItem(e) {
 }
 
 // Exportar: los ingredientes ya comprados llevan ✅, el resto un punto
+// Exportar: los ingredientes ya comprados llevan ✅, el resto un punto
 async function shareShopping(type) {
     try {
         const shopping = await api("/shopping-list");
         if (shopping.length === 0) {
-            alert("No hay nada que compartir todavía.");
+            notify("Todavía no hay contenido para compartir.");
             return;
         }
         let text = "🛒 LISTA DE LA COMPRA\n\n";
@@ -168,6 +188,6 @@ async function shareShopping(type) {
         });
         await shareText(text, type, "Lista de la compra");
     } catch (e) {
-        alert("No se pudo compartir la lista: " + e.message);
+        notify("No se pudo compartir la lista. " + e.message, "error");
     }
 }

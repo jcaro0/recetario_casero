@@ -5,124 +5,57 @@
 
 {% block content %}
 <main class="container">
+    <section class="hero">
+        <h1 id="recipeHeading">Nueva receta</h1>
+        <p>Añade los ingredientes y, si quieres, la preparación y tus notas.</p>
+    </section>
 
-<section class="hero recipeHero">
+    <form id="recipeForm" class="recipe-form" autocomplete="off">
+        <fieldset id="recipeFields" data-write disabled>
+            <h2>Datos generales</h2>
 
-    <h1>Nueva receta</h1>
+            <label for="recipeName">Nombre de la receta</label>
+            <input id="recipeName" placeholder="Ej. Lasaña de carne" required>
 
-    <p>Añade los ingredientes y, si quieres, la preparación y tus notas.</p>
+            <label for="recipeServings">Raciones</label>
+            <input id="recipeServings" type="number" min="1" max="2147483647" step="1" value="2" required>
 
-</section>
+            <span class="field-label" id="recipeTypeLabel">Tipo de receta</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="recipeTypeLabel">
+                {% for value, symbol, label in [
+                    ("ambos", "all_inclusive", "Ambos"), ("comida", "restaurant", "Comida"),
+                    ("cena", "bedtime", "Cena"), ("extra", "cookie", "Extra")
+                ] %}
+                <input type="radio" name="recipeType" id="type-{{ value }}" value="{{ value }}"{% if value == "ambos" %} checked{% endif %}>
+                <label for="type-{{ value }}" class="segmented-option">
+                    <span class="material-symbols-rounded" aria-hidden="true">{{ symbol }}</span>
+                    {{ label }}
+                </label>
+                {% endfor %}
+            </div>
 
-<form id="recipeForm" class="recipe-form" autocomplete="off">
+            <p id="typeChangeHint" class="form-hint" hidden>Si cambias el tipo, la receta se retirará de las comidas o cenas del menú en las que ya no encaje.</p>
 
-    <fieldset id="recipeFields" data-write disabled>
-    <h2>Datos generales</h2>
+            <h2>Ingredientes</h2>
+            <div id="ingredientList"></div>
 
-    <label for="recipeName">Nombre de la receta</label>
+            <h2>Preparación <small>(opcional)</small></h2>
+            <p class="form-hint">Enter avanza al siguiente paso. Mayús + Enter añade un salto de línea.</p>
+            <div id="preparationList"></div>
+            <button type="button" class="secondary" id="addStep">Añadir paso</button>
 
-    <input
-        id="recipeName"
-        required
-        placeholder="Ej. Lasaña de carne">
+            <label for="recipeNotes">Notas (opcional)</label>
+            <textarea id="recipeNotes" rows="3" placeholder="Consejos, variantes o comentarios personales"></textarea>
 
-    <label for="recipeServings">Raciones</label>
-    <input id="recipeServings" type="number" min="1" max="2147483647" step="1" value="2" required>
-
-    <label id="recipeTypeLabel">Tipo de receta</label>
-
-    <div class="segmented" role="radiogroup" aria-labelledby="recipeTypeLabel">
-
-        <span class="segmented-indicator"></span>
-
-        <input type="radio" name="recipeType" id="type-ambos" value="ambos" checked>
-        <label for="type-ambos" class="segmented-option">
-            <span class="material-symbols-rounded">all_inclusive</span>
-            Ambos
-        </label>
-
-        <input type="radio" name="recipeType" id="type-comida" value="comida">
-        <label for="type-comida" class="segmented-option">
-            <span class="material-symbols-rounded">restaurant</span>
-            Comida
-        </label>
-
-        <input type="radio" name="recipeType" id="type-cena" value="cena">
-        <label for="type-cena" class="segmented-option">
-            <span class="material-symbols-rounded">bedtime</span>
-            Cena
-        </label>
-
-        <input type="radio" name="recipeType" id="type-extra" value="extra">
-        <label for="type-extra" class="segmented-option">
-            <span class="material-symbols-rounded">cookie</span>
-            Extra
-        </label>
-
-    </div>
-
-    <p id="typeChangeHint" class="form-hint hidden">Si cambias el tipo, la receta se retirará de las comidas o cenas del menú en las que ya no encaje.</p>
-
-    <div class="ingredients-header">
-
-        <h2>Ingredientes</h2>
-
-    </div>
-
-    <div id="ingredientList">
-
-    </div>
-
-    <h2>Preparación <small>(opcional)</small></h2>
-    <p class="form-hint">Enter avanza al siguiente paso; Mayús + Enter añade un salto de línea.</p>
-    <div id="preparationList"></div>
-    <button type="button" class="secondary" id="addStep">Añadir paso</button>
-
-    <label for="recipeNotes">Notas (opcional)</label>
-    <textarea id="recipeNotes" rows="3" placeholder="Consejos, variantes o comentarios personales"></textarea>
-    <p class="form-hint">En notas, Enter añade una línea. Usa Tab para llegar a Guardar receta y Enter para confirmar.</p>
-
-    <button class="primary submitButton" type="submit">
-
-        <span class="material-symbols-rounded">save</span>
-
-        Guardar receta
-
-    </button>
-
-    <a class="secondary cancel-recipe" href="recetas.html">Cancelar</a>
-    </fieldset>
-
-</form>
-<p id="formStatus" role="status" aria-live="polite"></p>
-
+            <div class="form-actions">
+                <button class="primary submitButton" type="submit">
+                    <span class="material-symbols-rounded" aria-hidden="true">save</span>
+                    <span id="saveRecipeLabel">Guardar receta</span>
+                </button>
+                <a class="secondary cancel-recipe" href="recetas.html" id="cancelRecipe">Cancelar</a>
+            </div>
+        </fieldset>
+        <p id="formStatus" class="form-status" role="status"></p>
+    </form>
 </main>
-
-<!-- Modal: ya existe una receta con los mismos ingredientes -->
-
-<div id="duplicateModal" class="modal hidden" data-write role="dialog" aria-modal="true" aria-labelledby="duplicateModalText">
-
-    <div class="modal-content">
-
-        <span class="material-symbols-rounded modal-icon">
-            content_copy
-        </span>
-
-        <p id="duplicateModalText" class="modal-text"></p>
-
-        <div class="modal-buttons">
-
-            <button type="button" class="secondary" id="duplicateNo">
-                No
-            </button>
-
-            <button type="button" class="confirm" id="duplicateYes">
-                Sí
-            </button>
-
-        </div>
-
-    </div>
-
-</div>
 {% endblock %}

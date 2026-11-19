@@ -1,39 +1,32 @@
 {% extends "layout.html" %}
-{% set title = "Lista Compra" %}
+{% set title = "Lista de la compra" %}
 {% set brand = "Cesto de la compra" %}
 {% set icon = "🛒" %}
 {% set can_share = true %}
 
 {% block content %}
 <main class="container">
-
-    <section class="hero shoppingHero">
-
+    <section class="hero">
         <h1>Lista de compra semanal</h1>
-
-        <p>
-            Ingredientes del menú de la semana y productos añadidos a mano.
-        </p>
-
+        <p>Ingredientes del menú de la semana y productos añadidos a mano.</p>
     </section>
 
     <form id="manualForm" class="manual-form" autocomplete="off">
-        <fieldset data-write>
-            <label>Producto <input name="name" placeholder="Ej. Leche" required></label>
-            <label>Cantidad <input name="qty" placeholder="Ej. 2"></label>
+        <fieldset id="manualFields" data-write>
+            <label class="manual-name">Producto <input name="name" placeholder="Ej. Leche" required></label>
+            <label>Cantidad <input name="qty" inputmode="decimal" placeholder="Ej. 2"></label>
             <div class="manual-unit">
                 <label for="manualUnit">Unidad</label>
                 <div id="manualUnitField"></div>
             </div>
-            <button type="submit" class="primary" id="manualSubmit">Añadir producto</button>
-            <button type="button" class="secondary hidden" id="manualCancel">Cancelar</button>
+            <div class="form-actions">
+                <button type="submit" class="primary" id="manualSubmit">Añadir producto</button>
+                <button type="button" class="secondary" id="manualCancel" hidden>Cancelar</button>
+            </div>
         </fieldset>
-        <p id="manualStatus" role="status"></p>
+        <p id="manualStatus" class="form-status" role="status"></p>
     </form>
 
-    <section id="shoppingList" class="shopping-list">
-
-    </section>
-
+    <div id="shoppingList" class="shopping-list"></div>
 </main>
 {% endblock %}

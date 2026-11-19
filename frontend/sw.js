@@ -1,6 +1,6 @@
 // Cambia la versión al publicar recursos nuevos. El cambio se activa al cerrar
 // las páginas anteriores, para evitar mezclar HTML y JavaScript de dos versiones.
-const SHELL_CACHE = "recetario-shell-v4";
+const SHELL_CACHE = "recetario-shell-v5";
 const SHELL_FILES = new Set([
     "/", "/menu.html", "/recetas.html", "/agregar_recetas.html", "/lista_compra.html",
     "/manifest.webmanifest", "/img/recetario-180.png", "/img/recetario-192.png",

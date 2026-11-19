@@ -6,101 +6,50 @@
 
 {% block content %}
 <main class="container">
-
     <section class="hero">
-
         <h1>Tu menú de esta semana</h1>
-
         <p>Comidas y cenas se generan automáticamente y no se repiten mientras haya recetas suficientes.</p>
 
-        <form id="weekPeopleForm" class="week-people">
-            <label for="weekPeople">Comensales de la semana</label>
-            <input id="weekPeople" data-write type="number" min="1" max="2147483647" step="1" required value="2">
-            <button class="secondary" type="submit" data-write>Aplicar a todo el menú</button>
-            <span id="weekPeopleStatus" role="status"></span>
-        </form>
-        <button class="primary" id="generateButton" data-write>
-            <span class="material-symbols-rounded">autorenew</span>
-            Regenerar menú
-        </button>
-
+        <div class="menu-controls">
+            <form id="weekPeopleForm" class="week-people">
+                <label for="weekPeople">Comensales de la semana</label>
+                <input id="weekPeople" data-write type="number" min="1" max="2147483647" step="1" required value="2">
+                <button class="secondary" type="submit" data-write>Aplicar a todo el menú</button>
+            </form>
+            <button type="button" class="primary" id="generateButton" data-write aria-haspopup="dialog" hidden>
+                <span class="material-symbols-rounded" aria-hidden="true">autorenew</span>
+                Regenerar menú
+            </button>
+        </div>
+        <p id="weekPeopleStatus" class="form-status" role="status"></p>
     </section>
 
-
-    <section id="weekGrid" class="week-grid">
-
-        <!-- Se rellenará desde JS -->
-
-    </section>
-
+    <p class="day-hint" data-write-hint hidden>
+        <span class="material-symbols-rounded" aria-hidden="true">swap_horiz</span>
+        Selecciona una comida o cena para cambiarla.
+        <span class="drag-hint">Arrastra para moverla.</span>
+    </p>
+    <div id="weekGrid" class="week-grid"></div>
 </main>
 
-<!-- Modal: elegir receta para una comida o cena -->
-
-<div id="chooseRecipeModal" class="modal hidden" data-write>
-
-    <div class="modal-content big">
-
-        <div class="modal-header">
-
-            <h2>Cambiar receta de <span id="chooseRecipeDay"></span></h2>
-
-            <button class="icon-button" id="closeChooseModal">
-                <span class="material-symbols-rounded">close</span>
-            </button>
-
-        </div>
-
-        <input
-            type="text"
-            id="recipeSearchInput"
-            class="search-input"
-            placeholder="Buscar receta...">
-
-        <label for="slotPeople">Comensales (opcional)</label>
-        <input type="number" id="slotPeople" class="search-input" min="1" max="2147483647" step="1"
-            placeholder="Raciones originales de la receta">
-
-        <div id="chooseRecipeList" class="choose-recipe-list">
-
-        </div>
-
-    </div>
-
-</div>
-
-
-<!-- Modal -->
-
-<div id="modal" class="modal hidden" data-write>
-
+<dialog id="chooseRecipeModal" class="modal modal-wide" aria-labelledby="chooseRecipeTitle" data-write-dialog>
     <div class="modal-content">
-
-        <span class="material-symbols-rounded modal-icon">
-            warning
-        </span>
-
-        <h2>¿Generar un nuevo menú?</h2>
-
-        <p>
-            El menú actual se sustituirá por otro completamente aleatorio.
-        </p>
-
-        <label for="generatePeople">¿Para cuántas personas?</label>
-        <input id="generatePeople" type="number" min="1" max="2147483647" step="1" required value="2">
-        <div class="modal-buttons">
-
-            <button class="secondary" id="cancelModal">
-                Cancelar
+        <div class="modal-header">
+            <h2 id="chooseRecipeTitle">Cambiar receta de <span id="chooseRecipeDay"></span></h2>
+            <button type="button" class="icon-button" id="closeChooseModal" data-dialog-close aria-label="Cerrar" autofocus>
+                <span class="material-symbols-rounded" aria-hidden="true">close</span>
             </button>
-
-            <button class="danger" id="confirmModal">
-                Sí, regenerar
-            </button>
-
         </div>
-
+        <div class="chooser-fields">
+            <label for="recipeSearchInput">Buscar receta</label>
+            <input type="search" id="recipeSearchInput" placeholder="Nombre de la receta">
+            <label for="slotPeople">Comensales (opcional)</label>
+            <input type="number" id="slotPeople" min="1" max="2147483647" step="1"
+                placeholder="Raciones originales de la receta">
+        </div>
+        <p class="dialog-error" role="alert"></p>
+        <p class="dialog-progress" role="status" tabindex="-1"></p>
+        <div id="chooseRecipeList" class="choose-recipe-list"></div>
     </div>
-
-</div>
+</dialog>
 {% endblock %}

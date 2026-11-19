@@ -17,6 +17,14 @@
     --muted: #9C8672;
     --danger: #E0665C;
     --shadow: 0 10px 30px rgba(124,83,52,.10);
+    --line: #e4d6c3;
+    --control-border: #bda78e;
+    --danger-soft: #fae9e6;
+    --control-radius: 7px;
+    --gutter: 16px;
+    --safe-left: max(var(--gutter), env(safe-area-inset-left));
+    --safe-right: max(var(--gutter), env(safe-area-inset-right));
+    --heading-font: Georgia, "Times New Roman", serif;
     --radius: 18px;
 }
 
@@ -262,68 +270,171 @@ button:hover {
     background: var(--yellow-light);
 }
 
-/* ========================================================
-   MODALES BASE
-   ======================================================== */
+/* Diálogos */
 .modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(74, 53, 38, .45);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 20px;
-    z-index: 100; /* por encima de la cabecera fija (z-index 10) y del dropdown (99) */
+    top: var(--dialog-top, 0px);
+    bottom: var(--dialog-bottom, 0px);
+    width: min(28rem, calc(100% - var(--safe-left) - var(--safe-right)));
+    max-width: none;
+    max-height: calc(100vh - 32px);
+    max-height: calc(var(--dialog-height, 100dvh) - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
+    padding: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 14px 42px #321e1733;
+}
+
+.modal::backdrop {
+    background: #33241880;
+}
+
+.modal-wide {
+    width: min(34rem, calc(100% - var(--safe-left) - var(--safe-right)));
 }
 
 .modal-content {
-    background: var(--surface);
-    width: 100%;
-    max-width: 360px;
-    padding: 28px;
-    border-radius: 24px;
-    text-align: center;
-    box-shadow: var(--shadow);
+    padding: clamp(16px, 4vw, 24px);
 }
 
-.modal-icon {
-    color: var(--yellow);
-    font-size: 48px;
-    margin-bottom: 10px;
+.modal :is(button, a, input, textarea) {
+    scroll-margin: 8px;
 }
 
-.modal-buttons {
-    display: flex;
-    gap: 12px;
-    margin-top: 24px;
-}
-
-.modal-buttons button {
-    flex: 1;
-}
-
-/* Texto de un modal de confirmación y su botón de aceptar */
-.modal-text {
+.modal h2 {
     color: var(--brown-darker);
-    font-size: 17px;
-    font-weight: 600;
-    line-height: 1.4;
+    font: 700 1.42rem/1.2 var(--heading-font);
 }
 
-.confirm {
-    background: var(--brown);
-    color: white;
-    padding: 12px 20px;
-    border-radius: 15px;
-    font-weight: 600;
+.modal h2 + p {
+    margin-top: 8px;
+    color: var(--muted);
 }
 
-.confirm:hover {
-    background: var(--brown-dark);
+.modal label {
+    display: block;
+    margin: 14px 0 5px;
 }
 
-.hidden {
-    display: none;
+.modal label input {
+    margin-top: 5px;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.modal-buttons, .share-options {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.modal-buttons > * {
+    flex: 0 1 auto;
+}
+
+.dialog-error, .dialog-progress, #shareHint {
+    margin-top: 10px;
+    font-size: .9rem;
+    overflow-wrap: anywhere;
+}
+
+.dialog-error {
+    color: var(--danger);
+}
+
+.dialog-progress, #shareHint {
+    color: var(--muted);
+}
+
+.dialog-error:empty, .dialog-progress:empty, #shareHint:empty {
+    margin: 0;
+}
+
+#sharePreview {
+    min-height: 100px;
+    max-height: 35dvh;
+}
+
+/* Mensajes */
+.connection-status, .toast {
+    max-width: min(33rem, calc(100% - var(--safe-left) - var(--safe-right)));
+    margin: 0 auto;
+    border: 1px solid var(--line);
+    border-top: 0;
+    border-radius: 0 0 var(--control-radius) var(--control-radius);
+    background: var(--surface);
+    color: var(--text);
+    font-size: .875rem;
+}
+
+.connection-status {
+    width: fit-content;
+    padding: 6px 12px;
+    background: #f1ece4;
+    text-align: center;
+    transition: opacity .25s ease;
+}
+
+.connection-status.fading {
+    opacity: 0;
+}
+
+.toast {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: 9px;
+    padding: 0 3px 0 10px;
+    color: #523c27;
+    background: #fcf0d9;
+    border-color: #e4c99a;
+}
+
+.toast[data-kind="success"] {
+    color: #244a36;
+    background: #edf5ea;
+    border-color: #b4cbb7;
+}
+
+.toast[data-kind="error"] {
+    color: #792e28;
+    background: var(--danger-soft);
+    border-color: #e3b7b1;
+}
+
+#toastIcon {
+    display: grid;
+    place-items: center;
+    height: 24px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    font-weight: 700;
+}
+
+#toastMessage {
+    padding-block: 6px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+#dismissToast {
+    background: transparent;
+    border-color: transparent;
+    color: inherit;
+}
+
+#dismissToast:hover {
+    background: #50342112;
 }
 
 /* ========================================================
@@ -562,23 +673,6 @@ header.topbar {
     }
 }
 
-.connection-status {
-    width: fit-content;
-    max-width: calc(100% - 40px);
-    margin: 12px auto 0;
-    padding: 6px 12px;
-    border-radius: 10px;
-    background: #eeecea;
-    color: #4d4843;
-    font-size: .85rem;
-    text-align: center;
-    transition: opacity .25s ease;
-}
-
-.connection-status.fading {
-    opacity: 0;
-}
-
 [data-readonly] [data-write] {
     opacity: .6;
     cursor: default;
@@ -600,4 +694,83 @@ header.topbar {
 
 .unit-selector select, .unit-selector input {
     width: 100%;
+}
+:focus-visible {
+    outline: 2px solid var(--brown-dark);
+    outline-offset: 3px;
+}
+
+[hidden], .hidden {
+    display: none !important;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+input:not([type="checkbox"], [type="radio"]), select, textarea {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 42px;
+    padding: 8px 10px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--control-radius);
+    background: var(--surface);
+    color: var(--text);
+    font-weight: 400;
+}
+
+textarea {
+    width: 100%;
+    resize: vertical;
+}
+
+input::placeholder, textarea::placeholder {
+    color: var(--muted);
+    opacity: 1;
+}
+
+label, .field-label {
+    font-size: .9rem;
+    font-weight: 650;
+    color: var(--brown-darker);
+}
+
+.form-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.form-status, .loading-state {
+    color: var(--muted);
+    font-size: .9rem;
+}
+
+.form-status:not(:empty) {
+    margin-top: 10px;
+}
+
+.form-status:empty {
+    display: none;
+}
+
+.modal .primary, .recipe-form .primary, .manual-form .primary, .menu-controls .primary {
+    background: var(--brown-darker);
+    color: white;
+}
+
+.modal .danger {
+    background: #a13e36;
+}
+
+#dismissToast {
+    order: 0;
 }

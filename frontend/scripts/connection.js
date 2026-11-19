@@ -58,7 +58,6 @@ function setAccess(next) {
         banner.textContent = next === "offline"
             ? "Sin conexión · Modo de solo lectura"
             : "No se pudieron actualizar los datos · Modo de solo lectura";
-        document.querySelectorAll(".modal[data-write]").forEach(modal => modal.classList.add("hidden"));
         document.dispatchEvent(new Event("recetario:locked"));
     }
     scheduleConnectionCheck();

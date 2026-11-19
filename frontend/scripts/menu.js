@@ -6,26 +6,34 @@ const MEALS = [
 let currentEditSlot = null; // { day, meal }
 let recipeOptions = null;
 let weeklyMenu = {};
+let savingWeekPeople = false;
 let weekPeople = 2;
 
 document.addEventListener("DOMContentLoaded", () => {
     setupShareDropdown(shareMenu);
     loadWeeklyMenu();
     document.addEventListener("recetario:refreshed", loadWeeklyMenu);
-    document.addEventListener("recetario:locked", closeChooseRecipeModal);
-    setupModal();
+    byId("generateButton").onclick = event => confirmRegenerate(event.currentTarget);
     byId("weekPeopleForm").onsubmit = async e => {
         e.preventDefault();
         const input = byId("weekPeople");
-        if (!canWrite() || !input.reportValidity()) return;
+        if (!canWrite() || savingWeekPeople || !input.reportValidity()) return;
+        savingWeekPeople = true;
         const button = e.currentTarget.querySelector("button");
-        button.disabled = true;
+        button.disabled = input.disabled = true;
+        byId("weekPeopleStatus").textContent = "Aplicando comensales…";
         try {
             await api("/menu/people", "POST", { people: Number(input.value) });
-            byId("weekPeopleStatus").textContent = "Comensales actualizados";
             await loadWeeklyMenu();
-        } catch (err) { byId("weekPeopleStatus").textContent = err.message; }
-        finally { button.disabled = false; applyWriteAccess(); }
+            notify("Comensales actualizados", "success");
+        } catch (err) {
+            notify("No se pudieron guardar los comensales. " + err.message, "error");
+        } finally {
+            savingWeekPeople = false;
+            byId("weekPeopleStatus").textContent = "";
+            button.disabled = input.disabled = false;
+            applyWriteAccess();
+        }
     };
     setupChooseRecipeModal();
     setupWeekGridEvents();
@@ -50,7 +58,7 @@ async function shareMenu(type) {
         });
         await shareText(text.trim(), type, "Menú semanal");
     } catch (e) {
-        alert("No se pudo compartir el menú: " + e.message);
+        notify("No se pudo compartir el menú. " + e.message, "error");
     }
 }
 
@@ -62,10 +70,11 @@ function slotHtml(dayKey, meal, recipe) {
         <div class="meal-slot" data-write-drag
              data-day="${dayKey}" data-meal="${meal.key}">
             <div class="meal-label">${meal.icon} ${meal.label}</div>
-            <div class="food">
+            <button type="button" class="food" data-write aria-haspopup="dialog"
+                aria-label="Cambiar ${meal.label.toLowerCase()} de ${escapeHtml(dayKey)}: ${escapeHtml(name)}">
                 ${escapeHtml(name)}
-                <small>${count} ingredientes</small>
-            </div>
+                ${recipe?.id ? `<small>${count} ${count === 1 ? "ingrediente" : "ingredientes"}</small>` : ""}
+            </button>
             ${recipe?.id ? `<div class="slot-people">Comensales
                 <input data-write type="number" min="1" max="2147483647" step="1" required value="${recipe.people || recipe.servings || 2}"
                     aria-label="Comensales de ${escapeHtml(dayKey)} ${meal.label.toLowerCase()}">
@@ -78,7 +87,7 @@ function slotHtml(dayKey, meal, recipe) {
 async function loadWeeklyMenu() {
     const grid = byId("weekGrid");
     const generateButton = byId("generateButton");
-    grid.innerHTML = "<p>Cargando menú...</p>";
+    if (!grid.querySelector(".day-card")) grid.innerHTML = '<p class="loading-state">Cargando menú…</p>';
     try {
         // Peticiones en paralelo: días, ¿hay recetas suficientes? y menú
         const [days, status, menu, settings] = await Promise.all([
@@ -92,25 +101,20 @@ async function loadWeeklyMenu() {
 
         // Un menú ya planificado sigue accesible aunque después se borren recetas.
         if (!status.enough && !Object.values(menu).some(meals => Object.values(meals).some(r => r.id))) {
-            generateButton.style.display = "none";
+            generateButton.hidden = true;
+            document.querySelector("[data-write-hint]").hidden = true;
             grid.innerHTML = emptyStateHtml("No hay suficientes recetas");
             return;
         }
-        generateButton.style.display = status.enough ? "" : "none";
+        generateButton.hidden = !status.enough;
+        document.querySelector("[data-write-hint]").hidden = false;
 
         grid.innerHTML = days.map(day => {
             const meals = menu[day];
             return `
                 <div class="day-card" data-day="${day}">
-                    <div class="day-header">
-                        <h3>${escapeHtml(capitalize(day))}</h3>
-                        <span>🍽️</span>
-                    </div>
+                    <h3 class="day-heading">${escapeHtml(capitalize(day))}</h3>
                     ${MEALS.map(m => slotHtml(day, m, meals[m.key])).join("")}
-                    <div class="day-hint">
-                        <span class="material-symbols-rounded">swap_horiz</span>
-                        Toca para cambiar • arrastra para mover
-                    </div>
                 </div>
             `;
         }).join("");
@@ -121,47 +125,38 @@ async function loadWeeklyMenu() {
     }
 }
 
-// Modal para regenerar menú
-function setupModal() {
-    const modal = byId("modal");
-    const open = byId("generateButton");
-    const cancel = byId("cancelModal");
-    const confirm = byId("confirmModal");
-
-    const people = byId("generatePeople");
-    open.onclick = () => {
-        people.value = weekPeople;
-        modal.classList.remove("hidden");
-        people.focus();
-    };
-    cancel.onclick = () => modal.classList.add("hidden");
-    dismissModalOnBackdropOrEscape("modal", cancel.onclick);
-    confirm.onclick = async () => {
-        if (!canWrite() || !people.reportValidity()) return;
-        confirm.disabled = true;
-        try {
-            await api("/menu/generate", "POST", { people: Number(people.value) });
-            modal.classList.add("hidden");
-        } catch (e) {
-            alert("No se pudo regenerar el menú: " + e.message);
-        }
-        confirm.disabled = false;
-        loadWeeklyMenu();
-    };
+function confirmRegenerate(trigger) {
+    confirmAction({
+        title: "¿Regenerar el menú?",
+        message: "Se sustituirán las comidas y cenas de la semana.",
+        label: "Regenerar menú",
+        trigger,
+        destructive: true,
+        number: { label: "Comensales de la semana", value: weekPeople },
+        action: people => api("/menu/generate", "POST", { people }),
+        onSuccess: async () => {
+            await loadWeeklyMenu();
+            notify("Menú semanal regenerado", "success");
+        },
+        progress: "Regenerando menú…",
+        errorPrefix: "No se pudo regenerar el menú. "
+    });
 }
 
 // Modal selector de receta
 function setupChooseRecipeModal() {
-    byId("closeChooseModal").onclick = closeChooseRecipeModal;
-    dismissModalOnBackdropOrEscape("chooseRecipeModal", closeChooseRecipeModal);
+    byId("chooseRecipeModal").addEventListener("close", () => {
+        if (!byId("chooseRecipeModal").open) currentEditSlot = null;
+    });
     byId("recipeSearchInput").oninput = () => renderChooseRecipeList();
     byId("chooseRecipeList").onclick = event => {
         const button = event.target.closest(".choose-recipe-item");
-        if (button) selectRecipeForSlot(Number(button.dataset.id));
+        if (button) selectRecipeForSlot(button);
     };
 }
 
-async function openChooseRecipeModal(day, meal) {
+async function openChooseRecipeModal(day, meal, trigger) {
+    if (byId("chooseRecipeModal").open) return;
     const slot = { day, meal };
     currentEditSlot = slot;
     recipeOptions = null;
@@ -175,24 +170,19 @@ async function openChooseRecipeModal(day, meal) {
 
     dayLabel.textContent = `${capitalize(day)} (${meal})`;
     searchInput.value = "";
-    modal.classList.remove("hidden");
-    list.innerHTML = '<p class="choose-recipe-empty">Cargando recetas...</p>';
+    list.innerHTML = '<p class="loading-state">Cargando recetas…</p>';
+    if (!openDialog(modal, trigger)) return;
 
     try {
         const result = await api(`/recipes?meal=${meal}`);
-        if (currentEditSlot !== slot) return;
+        if (currentEditSlot !== slot || !modal.open) return;
         recipeOptions = result;
         renderChooseRecipeList();
     } catch {
-        if (currentEditSlot === slot) list.innerHTML = '<p class="choose-recipe-empty">No se pudieron cargar las recetas.</p>';
+        if (currentEditSlot === slot && modal.open) {
+            list.innerHTML = '<p class="choose-recipe-empty">No se pudieron cargar las recetas.</p>';
+        }
     }
-
-    searchInput.focus();
-}
-
-function closeChooseRecipeModal() {
-    byId("chooseRecipeModal").classList.add("hidden");
-    currentEditSlot = null;
 }
 
 function renderChooseRecipeList() {
@@ -217,21 +207,23 @@ function renderChooseRecipeList() {
             <span class="choose-recipe-count">${r.ingredients.length} ingredientes</span>
         </button>
     `).join("");
-
 }
 
-async function selectRecipeForSlot(recipeId) {
+async function selectRecipeForSlot(button) {
     if (!currentEditSlot) return;
     const { day, meal } = currentEditSlot;
     const input = byId("slotPeople");
-    if (!canWrite() || !input.reportValidity()) return;
-    try {
-        await saveMenuSlot(day, meal, recipeId, input.value ? Number(input.value) : null);
-    } catch (e) {
-        alert(e.message);
-    }
-    closeChooseRecipeModal();
-    loadWeeklyMenu();
+    if (!input.reportValidity()) return;
+    const people = input.value ? Number(input.value) : null;
+    const saved = await runDialogAction(byId("chooseRecipeModal"),
+        () => saveMenuSlot(day, meal, Number(button.dataset.id), people),
+        button, "Guardando comida o cena…", "No se pudo cambiar la receta. ");
+    if (!saved) return;
+    await loadWeeklyMenu();
+    const slot = [...document.querySelectorAll(".meal-slot")].find(slot =>
+        slot.dataset.day === day && slot.dataset.meal === meal);
+    slot?.querySelector(".food").focus({ preventScroll: true });
+    notify("Menú actualizado", "success");
 }
 
 // Click y drag & drop sobre cada hueco (comida / cena)
@@ -246,7 +238,7 @@ function setupWeekGridEvents() {
         }
         const slot = e.target.closest(".meal-slot");
         if (!slot) return;
-        openChooseRecipeModal(slot.dataset.day, slot.dataset.meal);
+        openChooseRecipeModal(slot.dataset.day, slot.dataset.meal, slot.querySelector(".food"));
     });
 
     grid.addEventListener("change", async (e) => {
@@ -305,7 +297,7 @@ function setupWeekGridEvents() {
                 day2: toDay, meal2: toMeal
             });
         } catch (err) {
-            alert(err.message);
+            notify("No se pudieron intercambiar las recetas. " + err.message, "error");
         }
         loadWeeklyMenu();
     });
@@ -314,10 +306,12 @@ function setupWeekGridEvents() {
 async function updateSlotPeople(slot, people) {
     const { day, meal } = slot.dataset;
     const input = slot.querySelector("input");
+    if (input.disabled) return;
     input.disabled = true;
+    slot.querySelector(".reset-people").disabled = true;
     try {
         await saveMenuSlot(day, meal, weeklyMenu[day][meal].id, people);
-    } catch (err) { alert("No se pudieron guardar los comensales: " + err.message); }
+    } catch (err) { notify("No se pudieron guardar los comensales. " + err.message, "error"); }
     await loadWeeklyMenu();
 }
 

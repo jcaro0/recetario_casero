@@ -40,7 +40,7 @@ function renderRecipes() {
                 <a class="editRecipe" data-write href="agregar_recetas.html?id=${recipe.id}" aria-label="Editar ${escapeHtml(recipe.name)}">Editar</a>
                 <button aria-label="Eliminar ${escapeHtml(recipe.name)}"
                     class="deleteRecipe" data-write
-                    onclick="deleteRecipe(${recipe.id})">
+                    onclick="deleteRecipe(${recipe.id}, this)" aria-haspopup="dialog">
                     <span class="material-symbols-rounded">delete</span>
                 </button>
                 <div class="ingredients-panel"><h4>Ingredientes</h4><ul>
@@ -67,12 +67,22 @@ function setupRecipeExpansion() {
     });
 }
 
-async function deleteRecipe(id) {
-    if (!canWrite() || !confirm("¿Eliminar receta?")) return;
-    try {
-        await api(`/recipes/${id}`, "DELETE");
-    } catch (e) {
-        alert("No se pudo eliminar: " + e.message);
-    }
-    loadRecipesView();
+function deleteRecipe(id, trigger) {
+    const recipe = catalogRecipes.find(item => item.id === id);
+    if (!recipe) return;
+    confirmAction({
+        title: "¿Eliminar la receta?",
+        message: `Se eliminará «${recipe.name}» del recetario. Esta acción no se puede deshacer.`,
+        label: "Eliminar receta",
+        trigger,
+        destructive: true,
+        progress: "Eliminando receta…",
+        errorPrefix: "No se pudo eliminar la receta. ",
+        action: () => api(`/recipes/${recipe.id}`, "DELETE"),
+        onSuccess: async () => {
+            await loadRecipesView();
+            byId("catalogSearch").focus({ preventScroll: true });
+            notify("Receta eliminada", "success");
+        }
+    });
 }
