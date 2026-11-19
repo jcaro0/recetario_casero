@@ -510,3 +510,83 @@ El esquema **6** añade únicamente la tabla `manual_products`. Si tu base usa
 una versión anterior, detén el servicio y ejecuta `manage.py migrate` en esa
 instalación según los pasos de Docker o Raspberry de este documento. El comando
 crea y verifica primero una copia en `BACKUP_DIR`. No uses `init` en una base existente.
+
+## Instalar Recetario como aplicación
+
+Abre la **URL HTTPS de confianza** de tu instalación con el móvil conectado a tu
+red local. En el propio ordenador, Chromium también admite el contexto seguro
+de `http://localhost:8000`. Desde el móvil debes usar HTTPS si accedes por la IP
+local del ordenador o de la Raspberry.
+
+- **Android (Chrome).** Abre el menú ⋮, elige **Añadir a pantalla de inicio** y
+  después **Instalar** si Chrome muestra ambas opciones.
+- **iPhone (Safari).** Pulsa **Compartir → Añadir a pantalla de inicio**. Activa
+  **Abrir como app web** si aparece esa opción y pulsa **Añadir**.
+
+Consulta las guías de [Chrome para Android](https://support.google.com/chrome/answer/9658361?hl=es)
+y [Safari en iPhone](https://support.apple.com/es-es/guide/iphone/iphea86e5236/ios).
+Tras publicar cambios de interfaz, cierra todas las pestañas o ventanas instaladas
+de Recetario y vuelve a abrirlo para que se active la nueva versión de recursos.
+
+### HTTPS en Raspberry Pi Zero W
+
+Puedes añadir Nginx únicamente para terminar TLS en el puerto **443** de la IP
+local. Waitress conserva **80** y la misma base SQLite. Reserva una IP fija para
+la Raspberry en el router para que el certificado siga coincidiendo con la URL.
+Mantén ambos puertos en la red local y evita redirecciones desde Internet. Si
+ya tienes un proxy local, puedes reutilizarlo. El siguiente ejemplo usa
+`192.168.1.50`. Sustitúyela por la IP de tu Raspberry.
+
+En un ordenador de confianza, crea una autoridad privada y un certificado de
+servidor con esa IP en el SAN. Conserva `ca.key` cifrada en el ordenador.
+
+```sh
+mkdir -m 700 recetario-tls
+cd recetario-tls
+umask 077
+RECETARIO_IP=192.168.1.50
+
+openssl genrsa -aes256 -out ca.key 2048
+openssl req -x509 -new -key ca.key -sha256 -days 3650 -out ca.crt \
+  -subj '/CN=Recetario CA local' \
+  -addext 'basicConstraints=critical,CA:TRUE,pathlen:0' \
+  -addext 'keyUsage=critical,keyCertSign,cRLSign'
+
+openssl req -new -newkey rsa:2048 -nodes -keyout server.key -out server.csr \
+  -subj "/CN=$RECETARIO_IP"
+cat > server.ext <<EOF_EXT
+basicConstraints=critical,CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=IP:$RECETARIO_IP
+EOF_EXT
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+  -sha256 -days 365 -extfile server.ext -out server.crt
+openssl x509 -in ca.crt -outform DER -out recetario-ca.cer
+```
+
+Copia solo `server.crt` y `server.key` a la Raspberry. Instálalos en
+`/etc/nginx/recetario/` como root, con permiso `600` para la clave del servidor.
+Instala el paquete `nginx` de Raspberry Pi OS. Si la instalación habilita el
+sitio de ejemplo en el puerto 80, deshabilita **ese sitio de ejemplo** antes de
+ejecutar ambos servidores. Puedes parar temporalmente Recetario mientras instalas
+el paquete para evitar que el sitio de ejemplo intente ocupar el puerto.
+
+Adapta [deploy/recetario.nginx.example](deploy/recetario.nginx.example), instálalo
+como `/etc/nginx/sites-available/recetario` y enlázalo desde `sites-enabled`.
+Comprueba la configuración con `sudo nginx -t`, arranca Recetario y recarga Nginx.
+Desde el ordenador, verifica el certificado y el proxy con
+`curl --cacert ca.crt https://192.168.1.50/manifest.webmanifest`. Renueva el
+certificado de servidor antes de los 365 días y recarga Nginx.
+Consulta la [documentación de HTTPS en Nginx](https://nginx.org/en/docs/http/configuring_https_servers.html).
+
+Transfiere **solo el certificado público** `recetario-ca.cer` al móvil por un
+medio de confianza. En Android, busca en Ajustes la opción **Instalar un
+certificado → Certificado de CA**. En iPhone, abre e instala el perfil y activa
+la confianza completa en **Ajustes → General → Información → Ajustes de confianza
+de los certificados**. Comprueba que la URL HTTPS abra sin avisos antes de
+instalar Recetario. [Apple y certificados instalados manualmente](https://support.apple.com/es-es/102390)
+
+Las pruebas automatizadas comprueban Chromium en escritorio y resolución móvil.
+En cada teléfono quedan por verificar la instalación, el icono, la apertura
+desde la pantalla de inicio y el acceso al proxy por HTTPS.
