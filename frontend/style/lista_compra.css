@@ -48,3 +48,62 @@
     font-size: 14px;
 }
 .purchased-divider { border-top:1px solid #d7c6b3; padding-top:18px; margin:24px 0 12px; color:var(--muted); font-size:1rem; }
+
+.manual-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    margin: 0 0 20px;
+}
+
+.manual-form label {
+    display: grid;
+    flex: 1 1 100px;
+    gap: 4px;
+    min-width: 0;
+    font-size: .9rem;
+}
+
+.manual-form input {
+    width: 100%;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid #e2d2bc;
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+}
+
+#manualStatus {
+    flex-basis: 100%;
+    margin: 0;
+}
+
+#manualStatus:empty {
+    display: none;
+}
+
+.shopping-details {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+
+.manual-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.manual-actions button {
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--yellow-pale);
+    color: var(--text);
+}
