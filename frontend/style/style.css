@@ -591,3 +591,13 @@ header.topbar {
 [data-readonly] .day-hint {
     visibility: hidden;
 }
+
+.unit-selector {
+    display: grid;
+    min-width: 0;
+    gap: 6px;
+}
+
+.unit-selector select, .unit-selector input {
+    width: 100%;
+}

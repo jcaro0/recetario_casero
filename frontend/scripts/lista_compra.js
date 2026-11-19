@@ -2,11 +2,15 @@ let shoppingSaving = false;
 let shoppingItems = []; // lista actual (para saber qué ingrediente es cada casilla)
 let editingProduct = null;
 
+let manualUnit;
+
 document.addEventListener("DOMContentLoaded", () => {
     byId("shoppingList").addEventListener("change", onToggleItem);
     byId("shoppingList").addEventListener("click", onProductAction);
     byId("manualForm").addEventListener("submit", saveManualProduct);
     byId("manualCancel").onclick = resetManualForm;
+    manualUnit = createUnitSelector("manualUnit");
+    byId("manualUnitField").replaceWith(manualUnit.element);
     setupShareDropdown(shareShopping);
     loadShoppingList();
     document.addEventListener("recetario:refreshed", loadShoppingList);
@@ -64,6 +68,7 @@ function renderShoppingList() {
 function resetManualForm() {
     editingProduct = null;
     byId("manualForm").reset();
+    manualUnit.setValue();
     byId("manualSubmit").textContent = "Añadir producto";
     byId("manualCancel").classList.add("hidden");
     byId("manualStatus").textContent = "";
@@ -73,7 +78,7 @@ async function saveManualProduct(event) {
     event.preventDefault();
     if (!canWrite()) return;
     const button = byId("manualSubmit");
-    const data = Object.fromEntries(new FormData(event.currentTarget));
+    const data = { ...Object.fromEntries(new FormData(event.currentTarget)), unit: manualUnit.value };
     button.disabled = true;
     try {
         const url = "/shopping-list/manual";
@@ -97,7 +102,7 @@ async function onProductAction(event) {
         const fields = byId("manualForm").elements;
         fields.namedItem("name").value = item.name;
         fields.qty.value = item.qty ?? "";
-        fields.unit.value = item.unit ?? "";
+        manualUnit.setValue(item.unit);
         byId("manualSubmit").textContent = "Guardar producto";
         byId("manualCancel").classList.remove("hidden");
         fields.namedItem("name").focus();

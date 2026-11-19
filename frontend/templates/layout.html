@@ -55,6 +55,10 @@
 
 <script src="scripts/script.js"></script>
 <script src="scripts/connection.js"></script>
+{% if page in ("agregar_recetas", "lista_compra") %}
+{% include "_unit_selector.html" %}
+<script src="scripts/units.js"></script>
+{% endif %}
 <script src="scripts/{{ page }}.js"></script>
 </body>
 </html>

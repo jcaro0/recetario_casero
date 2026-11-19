@@ -54,26 +54,20 @@ function createIngredientRow(ingredient = {}) {
     div.innerHTML = `
         <input placeholder="Nuevo ingrediente" aria-label="Ingrediente" class="ingredient-name">
         <input placeholder="Cantidad" aria-label="Cantidad" class="ingredient-qty" inputmode="decimal">
-        <select class="ingredient-unit" aria-label="Unidad">
-            <option value="">Sin unidad</option>
-            <option value="g">g — gramos</option><option value="kg">kg — kilos</option>
-            <option value="ml">ml — mililitros</option><option value="l">l — litros</option>
-            <option value="uds">uds — unidades</option><option value="cda">cda — cucharada</option>
-            <option value="cdta">cdta — cucharadita</option><option value="taza">taza — tazas</option>
-        </select>
         <button type="button" class="deleteIngredient" aria-label="Eliminar ingrediente">✕</button>`;
     const name = div.querySelector(".ingredient-name");
     const qty = div.querySelector(".ingredient-qty");
-    const unit = div.querySelector(".ingredient-unit");
+    const unit = createUnitSelector(null, () => Boolean(name.value.trim()));
+    unit.element.querySelector("select").classList.add("ingredient-unit");
+    div.insertBefore(unit.element, div.querySelector("button"));
+    div.unitSelector = unit;
     name.value = ingredient.name || "";
     qty.value = ingredient.qty ?? "";
-    if (ingredient.unit && !Array.from(unit.options).some(o => o.value === ingredient.unit)) {
-        unit.add(new Option(ingredient.unit, ingredient.unit));
-    }
-    unit.value = ingredient.unit || "";
+    unit.setValue(ingredient.unit);
     name.oninput = () => {
         div.classList.toggle("ghost", !name.value.trim());
         name.setCustomValidity("");
+        unit.validate();
         if (name.value.trim() && div === byId("ingredientList").lastElementChild) {
             byId("ingredientList").appendChild(createIngredientRow());
         }
@@ -140,12 +134,12 @@ function advanceOnEnter(e) {
     }
     const row = target.closest(".ingredient-row");
     if (row) {
-        const inputs = Array.from(row.querySelectorAll("input, select"));
+        const inputs = Array.from(row.querySelectorAll("input:not(:disabled), select"));
         const index = inputs.indexOf(target);
         if (index === 0 && !target.value.trim()) {
             const step = document.querySelector(".preparation-step");
             (step || byId("addStep")).focus();
-        } else if (index < 2) inputs[index + 1].focus();
+        } else if (index < inputs.length - 1) inputs[index + 1].focus();
         else {
             const next = row.nextElementSibling || byId("ingredientList").appendChild(createIngredientRow());
             next.querySelector("input").focus();
@@ -162,7 +156,7 @@ function collectRecipe() {
     const ingredients = Array.from(document.querySelectorAll(".ingredient-row")).map(row => ({
         name: row.querySelector(".ingredient-name").value.trim(),
         qty: row.querySelector(".ingredient-qty").value.trim() || null,
-        unit: row.querySelector(".ingredient-unit").value || null
+        unit: row.unitSelector.value || null
     })).filter(ing => ing.name);
     return {
         name: byId("recipeName").value.trim(),
