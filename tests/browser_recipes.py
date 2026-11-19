@@ -74,6 +74,198 @@ def check_pwa(browser, base, results, next_release):
     print("OK: manifest, iconos, Service Worker, navegación móvil y actualización de recursos")
 
 
+def check_offline(browser, base, results, unavailable_snapshot):
+    admin_context = browser.new_context()
+    admin = admin_context.request
+    recipe = {"name": "Desde casa", "servings": 2, "preparation": ["Hornear"],
+              "notes": "Una nota para leer", "ingredients": [{"name": "Pimiento", "qty": 2, "unit": "uds"}]}
+    recipe_id = admin.post(base + "/recipes", data=recipe).json()["id"]
+    recipe_url = f"/recipes/{recipe_id}"
+    day = db.DAYS[0]
+    admin.post(base + f"/menu/{day}/comida", data={"recipe_id": recipe_id, "people": 4})
+    product_id = admin.post(base + "/shopping-list/manual", data={
+        "name": "Papel de cocina", "qty": 1, "unit": "paquete"
+    }).json()["manual_id"]
+    product_url = f"/shopping-list/manual/{product_id}"
+    admin.patch(base + product_url, data={"checked": True})
+
+    context = browser.new_context(viewport={"width": 375, "height": 812})
+    page = context.new_page()
+    errors = []
+    writes = []
+    context.on("request", lambda req: writes.append((req.method, req.url))
+               if req.method not in ("GET", "HEAD", "OPTIONS") else None)
+
+    def observe_errors(tab):
+        tab.on("pageerror", lambda error: errors.append(str(error)) if str(error) != "Transition was skipped" else None)
+        tab.on("console", lambda message: errors.append(message.text) if message.type == "error"
+               and not message.text.startswith("Failed to load resource:") else None)
+
+    observe_errors(page)
+    banner = page.locator("#connectionStatus")
+    try:
+        page.goto(base + "/")
+        expect(page.locator(".meal-slot .food").first).to_contain_text("Desde casa")
+        expect(page.locator("#generateButton")).to_be_enabled()
+        page.wait_for_function("() => Boolean(navigator.serviceWorker.controller)")
+        expect(page.locator("#connectionStatus")).to_be_hidden()
+        context.set_offline(True)
+        expect(banner).to_have_text("Sin conexión · Modo de solo lectura")
+        page.reload()
+        expect(banner).to_be_visible()
+        expect(page.locator(".meal-slot .food").first).to_contain_text("Desde casa")
+        person = page.locator(".slot-people input").first
+        expect(person).to_have_value("4")
+        expect(person).to_be_disabled()
+        expect(page.locator("#weekPeople")).to_be_disabled()
+        expect(page.locator("#generateButton")).to_be_disabled()
+        expect(page.locator(".meal-slot").first).to_have_attribute("draggable", "false")
+        page.locator(".meal-slot .food").first.click()
+        expect(page.locator("#chooseRecipeModal")).to_be_hidden()
+        page.evaluate("window.scrollTo(0, 600)")
+        header = page.locator(".topbar").bounding_box()
+        notice = banner.bounding_box()
+        assert header["y"] + header["height"] <= notice["y"] < 812
+        page.evaluate("window.scrollTo(0, 0)")
+        page.screenshot(path=str(results / "offline-menu-mobile.png"), full_page=True)
+
+        page.locator('nav a[href="recetas.html"]').click()
+        page.locator("#catalogSearch").fill("desde")
+        card = page.locator(".recipe-card")
+        expect(card).to_have_count(1)
+        card.locator(".recipe-card-header").click()
+        expect(card).to_contain_text("Hornear")
+        expect(card).to_contain_text("Una nota para leer")
+        expect(card).to_contain_text("Pimiento")
+        expect(card.locator(".editRecipe")).to_be_disabled()
+        expect(card.locator(".deleteRecipe")).to_be_disabled()
+        page.screenshot(path=str(results / "offline-recetas-mobile.png"), full_page=True)
+        page.goto(base + f"/agregar_recetas.html?id={recipe_id}")
+        expect(page.locator("#recipeName")).to_have_value("Desde casa")
+        expect(page.locator("#recipeName")).to_be_disabled()
+        expect(page.locator(".submitButton")).to_be_disabled()
+        page.goto(base + "/agregar_recetas.html")
+        expect(page.locator(".submitButton")).to_be_disabled()
+        expect(page.locator("#addStep")).to_be_disabled()
+
+        page.locator('nav a[href="lista_compra.html"]').click()
+        product = page.locator(".shopping-item").filter(has_text="Papel de cocina")
+        expect(product).to_contain_text("1 paquete")
+        expect(product.locator("input")).to_be_checked()
+        expect(product.locator("input")).to_be_disabled()
+        expect(product.locator('[data-action="delete"]')).to_be_disabled()
+        expect(product.locator('[data-action="edit"]')).to_be_disabled()
+        expect(page.locator("#manualSubmit")).to_be_disabled()
+        product.locator("input").evaluate("""box => {
+            box.checked = false;
+            box.dispatchEvent(new Event("change", {bubbles: true}));
+        }""")
+        expect(product.locator("input")).to_be_checked()
+        page.screenshot(path=str(results / "offline-compra-mobile.png"), full_page=True)
+        before = page.evaluate("async () => await snapshotStorage()")
+
+        # Intentos directos contra el mismo cliente de API que usan los controles.
+        attempts = [
+            ("/recipes", "POST", recipe), (recipe_url, "PUT", recipe), (recipe_url, "DELETE", None),
+            ("/menu/generate", "POST", {"people": 6}), ("/menu/people", "POST", {"people": 5}),
+            (f"/menu/{day}/comida", "POST", {"recipe_id": recipe_id, "people": 5}),
+            ("/shopping-list/manual", "POST", {"name": "En cola"}),
+            (product_url, "PATCH", {"checked": False}), (product_url, "DELETE", None)
+        ]
+        rejected = page.evaluate("""async attempts => {
+            const rejections = [];
+            for (const [path, method, data] of attempts) {
+                try { await api(path, method, data); } catch (error) { rejections.push(error.message); }
+            }
+            return rejections;
+        }""", attempts)
+        assert rejected == ["Esta acción requiere conexión con Recetario."] * len(attempts)
+        assert before == page.evaluate("async () => await snapshotStorage()")
+        assert page.evaluate("async () => (await indexedDB.databases()).map(x => x.name)") == ["recetario-lectura"]
+        assert page.evaluate("""async () => {
+            const keys = await caches.keys();
+            const requests = await (await caches.open(keys.find(key => key.startsWith("recetario-shell-")))).keys();
+            return requests.every(request => request.method === "GET" &&
+                !["/snapshot", "/recipes", "/menu", "/shopping-list"].includes(new URL(request.url).pathname));
+        }""")
+        assert not writes, writes
+
+        # Una segunda instancia escribe en el servidor mientras esta pestaña está desconectada.
+        assert admin.put(base + recipe_url, data={**recipe, "notes": "Actualizado desde casa"}).ok
+        assert admin.put(base + product_url, data={"name": "Papel nuevo", "qty": 2, "unit": "paquetes"}).ok
+        assert admin.patch(base + product_url, data={"checked": False}).ok
+
+        # Cierra la página y arranca desde el icono (start_url) en el mismo perfil offline.
+        page.close()
+        page = context.new_page()
+        observe_errors(page)
+        banner = page.locator("#connectionStatus")
+        page.goto(base + "/")
+        expect(banner).to_have_text("Sin conexión · Modo de solo lectura")
+        page.locator('nav a[href="lista_compra.html"]').click()
+        expect(page.locator(".shopping-item").filter(has_text="Papel de cocina")).to_be_visible()
+
+        unavailable_snapshot.set()
+        context.set_offline(False)
+        # Chromium no siempre emite online al restaurar la red después de reabrir.
+        expect(banner).to_have_text("No se pudieron actualizar los datos · Modo de solo lectura", timeout=18000)
+        expect(page.locator("#manualSubmit")).to_be_disabled()
+        unavailable_snapshot.clear()
+
+        with page.expect_response(lambda response: response.url.endswith("/snapshot") and response.ok):
+            page.evaluate('window.dispatchEvent(new Event("online"))')
+        expect(banner).to_have_text("Ya tienes conexión")
+        updated = page.locator(".shopping-item").filter(has_text="Papel nuevo")
+        expect(updated).to_contain_text("2 paquetes")
+        expect(updated.locator("input")).not_to_be_checked()
+        expect(page.locator("#manualSubmit")).to_be_enabled()
+        expect(banner).to_be_hidden(timeout=4000)
+        assert not writes, writes
+        page.locator('nav a[href="recetas.html"]').click()
+        card = page.locator(".recipe-card").filter(has_text="Desde casa")
+        card.locator(".recipe-card-header").click()
+        expect(card).to_contain_text("Actualizado desde casa")
+        expect(card.locator(".editRecipe")).to_be_enabled()
+
+        # Con Wi-Fi activo, la Pi puede no responder. El sondeo previo impide el POST.
+        page.locator('nav a[href="lista_compra.html"]').click()
+        page.route("**/connection", lambda route: route.abort())
+        page.once("dialog", lambda dialog: dialog.accept())
+        updated.locator("input").click()
+        assert page.evaluate("navigator.onLine") is True
+        expect(banner).to_have_text("Sin conexión · Modo de solo lectura")
+        expect(updated.locator("input")).not_to_be_checked()
+        assert not writes, writes
+        actual = admin.get(base + "/shopping-list").json()
+        assert [item for item in actual if item.get("manual_id") == product_id] == [{
+            "manual_id": product_id, "name": "Papel nuevo", "qty": 2, "unit": "paquetes", "checked": False
+        }]
+        assert not errors, errors
+    finally:
+        unavailable_snapshot.clear()
+        context.close()
+        admin_context.close()
+    print("OK: consulta y reapertura offline; bloqueo sin escrituras; recuperación y datos de SQLite actualizados")
+
+
+def check_offline_without_data(browser, base, unavailable_snapshot):
+    context = browser.new_context()
+    page = context.new_page()
+    unavailable_snapshot.set()
+    try:
+        page.goto(base + "/")
+        page.wait_for_function("() => Boolean(navigator.serviceWorker.controller)")
+        expect(page.locator("#connectionStatus")).to_contain_text("No se pudieron actualizar los datos")
+        context.set_offline(True)
+        page.locator('nav a[href="recetas.html"]').click()
+        expect(page.locator("#connectionStatus")).to_contain_text("Sin conexión")
+        expect(page.locator("#recipesContainer")).to_have_text("Estos datos aún no están disponibles sin conexión.")
+    finally:
+        unavailable_snapshot.clear()
+        context.close()
+    print("OK: interfaz disponible sin conexión incluso si aún no hay copia de recetas")
+
+
 def run():
     results = Path(os.environ.get("TEST_RESULTS_DIR", Path(__file__).parent / "results"))
     results.mkdir(exist_ok=True)
@@ -84,10 +276,13 @@ def run():
         import set_up
         set_up.initialize()
         next_release = threading.Event()
+        unavailable_snapshot = threading.Event()
         frontend = Path(__file__).resolve().parents[1] / "frontend"
 
         @app.before_request
         def serve_test_release():
+            if unavailable_snapshot.is_set() and request.path == "/snapshot":
+                return Response("Instantánea no disponible", status=503, mimetype="text/plain")
             if not next_release.is_set():
                 return
             if request.path == "/sw.js":
@@ -324,7 +519,7 @@ def run():
                 page.locator("#shareMenuButton").click()
                 page.once("dialog", lambda dialog: dialog.accept())
                 page.locator('[data-share="copy"]').click()
-                page.wait_for_function('async () => (await navigator.clipboard.readText()).includes("MENÚ SEMANAL")')
+                assert page.evaluate('async () => (await navigator.clipboard.readText()).includes("MENÚ SEMANAL")')
                 page.locator('nav a[href="lista_compra.html"]').click()
                 tomato = page.locator(".shopping-item").filter(has=page.locator("strong", has_text="Tomate"))
                 expect(tomato).to_have_count(1)
@@ -333,30 +528,31 @@ def run():
                                for meals in page.request.get(base + "/menu").json().values()
                                for r in meals.values() if r["name"].startswith("Plato de prueba"))
                 expect(tomato).to_contain_text(f"{int(expected)} g")
-                tomato.locator("input").check()
+                tomato.locator("input").click()
                 expect(page.locator(".purchased-divider")).to_be_visible()
                 expect(page.locator(".shopping-item").last.locator("strong")).to_have_text("Tomate")
                 page.reload()
                 expect(tomato.locator("input")).to_be_checked()
-                tomato.locator("input").uncheck()
+                tomato.locator("input").click()
                 expect(page.locator(".purchased-divider")).to_have_count(0)
                 expect(tomato.locator("input")).not_to_be_checked()
                 page.reload()
                 expect(tomato.locator("input")).not_to_be_checked()
-                tomato.locator("input").check()
+                tomato.locator("input").click()
                 expect(page.locator(".purchased-divider")).to_be_visible()
                 page.screenshot(path=str(results / "shopping-desktop.png"), full_page=True)
                 page.locator("#shareMenuButton").click()
                 page.once("dialog", lambda dialog: dialog.accept())
                 page.locator('[data-share="copy"]').click()
-                page.wait_for_function('async () => (await navigator.clipboard.readText()).includes("✅ Tomate")')
+                assert page.evaluate('async () => (await navigator.clipboard.readText()).includes("✅ Tomate")')
                 # Todos comprados y vuelta a pendientes.
-                while page.locator('.shopping-item:not(.checked) input').count():
-                    page.locator('.shopping-item:not(.checked) input').first.check()
-                    page.wait_for_timeout(100)
+                pending = page.locator('.shopping-item:not(.checked) input')
+                for remaining in reversed(range(pending.count())):
+                    pending.first.click()
+                    expect(pending).to_have_count(remaining)
                 expect(page.locator('.shopping-item:not(.checked)')).to_have_count(0)
                 expect(page.locator('.purchased-divider')).to_have_count(1)
-                page.locator('.shopping-item input').first.uncheck()
+                page.locator('.shopping-item input').first.click()
                 expect(page.locator('.shopping-item:not(.checked)')).to_have_count(1)
                 print("OK: suma de tomates con escalado, comprados al final, separador, desmarcado y persistencia")
                 print("OK: intercambio al arrastrar, navegación y copia al portapapeles de menú y compra")
@@ -399,15 +595,15 @@ def run():
                 form.locator('[name="qty"]').fill("3")
                 form.get_by_role("button", name="Guardar producto").click()
                 expect(product).to_contain_text("3 botellas")
-                product.get_by_role("checkbox").check()
+                product.get_by_role("checkbox").click()
                 expect(product).to_have_class("shopping-item checked")
                 page.reload()
                 expect(product.get_by_role("checkbox")).to_be_checked()
                 page.locator("#shareMenuButton").click()
                 page.once("dialog", lambda dialog: dialog.accept())
                 page.locator('[data-share="copy"]').click()
-                page.wait_for_function('async () => (await navigator.clipboard.readText()).includes("✅ Detergente (3 botellas)")')
-                product.get_by_role("checkbox").uncheck()
+                assert page.evaluate('async () => (await navigator.clipboard.readText()).includes("✅ Detergente (3 botellas)")')
+                product.get_by_role("checkbox").click()
                 expect(product).to_have_class("shopping-item")
                 page.screenshot(path=str(results / "manual-shopping-mobile.png"), full_page=True)
                 page.once("dialog", lambda dialog: dialog.accept())
@@ -418,6 +614,8 @@ def run():
                 assert not network_errors, network_errors
                 assert not console_errors, console_errors
                 check_pwa(browser, base, results, next_release)
+                check_offline(browser, base, results, unavailable_snapshot)
+                check_offline_without_data(browser, base, unavailable_snapshot)
                 browser.close()
                 print("OK: formulario móvil sin desbordamiento; sin errores JavaScript")
         finally:
