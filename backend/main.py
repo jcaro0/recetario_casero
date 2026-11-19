@@ -1,3 +1,4 @@
+import argparse
 import os
 import sqlite3
 import sys
@@ -275,13 +276,25 @@ def api_delete_recipe(recipe_id):
 
 
 def main():
-    from waitress import serve
+    parser = argparse.ArgumentParser(description="Arranque de Recetario")
+    parser.add_argument("--init-if-missing", action="store_true", help="Crea SQLite si falta el archivo")
+    parser.add_argument("--check-db", action="store_true", help="Valida la base sin arrancar el servidor")
+    args = parser.parse_args()
 
     try:
+        if args.init_if_missing:
+            from set_up import initialize_if_missing
+
+            if initialize_if_missing():
+                print(f"Base SQLite nueva creada en {db.DB_PATH}", flush=True)
         db._ensure_ready()
+        if args.check_db:
+            return
         port = int(os.environ.get("PORT", "8000"))
     except (OSError, ValueError, RuntimeError, sqlite3.Error) as error:
         sys.exit(f"ERROR al arrancar: {error}")
+
+    from waitress import serve
 
     print(f"Recetario: DB_PATH={db.DB_PATH}; puerto={port}", flush=True)
     try:

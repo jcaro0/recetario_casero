@@ -51,7 +51,7 @@ if 'run' in sys.argv and os.environ.get('FAIL_PREFLIGHT') == '1':
         calls = self.recorded()
         self.assertEqual(len(calls), 4)
         self.assertEqual(calls[1]['args'][-2:], ['build', 'backend'])
-        self.assertIn('database._ensure_ready()', calls[2]['args'][-1])
+        self.assertEqual(calls[2]['args'][-5:], ['backend', 'python', 'main.py', '--check-db', '--init-if-missing'])
         self.assertEqual(calls[3]['args'][-4:], ['up', '-d', '--no-deps', 'backend'])
         for call in calls[1:]:
             self.assertEqual(call['cwd'], str(REPO))

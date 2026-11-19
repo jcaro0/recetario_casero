@@ -60,6 +60,47 @@ class OperationsTests(unittest.TestCase):
             set_up.initialize()
         self.assertEqual(db.get_recipe(self.recipe['id']), self.recipe)
 
+    def check_startup(self, path, *options):
+        script = Path(__file__).resolve().parents[1] / "backend/main.py"
+        return subprocess.run([sys.executable, str(script), "--check-db", *options],
+                              env=dict(os.environ, DB_PATH=str(path)), capture_output=True, text=True)
+
+    def test_docker_startup_creates_an_absent_database_and_preserves_an_existing_one(self):
+        target = self.root / "new" / "recetario.db"
+        self.assertNotEqual(self.check_startup(target).returncode, 0)
+        self.assertFalse(target.exists())
+        created = self.check_startup(target, "--init-if-missing")
+        self.assertEqual(created.returncode, 0, created.stderr)
+        self.assertIn("Base SQLite nueva", created.stdout)
+        self.assertEqual(backup.verify(target)["version"], db.SCHEMA_VERSION)
+        self.assertEqual(backup.verify(target)["recipes"], 0)
+
+        repeated = self.check_startup(db.DB_PATH, "--init-if-missing")
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        self.assertNotIn("Base SQLite nueva", repeated.stdout)
+        self.assertEqual(db.get_recipe(self.recipe["id"]), self.recipe)
+
+    def test_docker_startup_rejects_old_empty_and_missing_database_with_wal(self):
+        legacy = self.legacy()
+        result = self.check_startup(legacy, "--init-if-missing")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("requiere migración", result.stderr)
+        self.assertEqual(backup.verify(legacy)["version"], 1)
+
+        empty = self.root / "empty.db"
+        empty.touch()
+        self.assertNotEqual(self.check_startup(empty, "--init-if-missing").returncode, 0)
+        self.assertEqual(empty.read_bytes(), b"")
+
+        missing = self.root / "orphan.db"
+        wal = missing.with_suffix(".db-wal")
+        wal.write_bytes(b"auxiliar")
+        result = self.check_startup(missing, "--init-if-missing")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("orphan.db-wal", result.stderr)
+        self.assertFalse(missing.exists())
+        self.assertEqual(wal.read_bytes(), b"auxiliar")
+
     def test_wal_backup_and_explicit_restore_preserve_current(self):
         with closing(sqlite3.connect(db.DB_PATH)) as writer:
             writer.execute('PRAGMA journal_mode=WAL')

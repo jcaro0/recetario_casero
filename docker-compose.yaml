@@ -2,6 +2,7 @@ services:
 
   backend:
     build: ./backend
+    command: ["python", "main.py", "--init-if-missing"]
     ports:
       - "8000:8000"
 

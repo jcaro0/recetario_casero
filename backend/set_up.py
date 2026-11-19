@@ -169,6 +169,24 @@ def initialize():
     create_tables(_new=True)
 
 
+def initialize_if_missing():
+    """Crea la base solo si falta su archivo y no quedan auxiliares de SQLite."""
+    path = Path(db.DB_PATH)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        for suffix in ("-wal", "-shm", "-journal"):
+            if os.path.lexists(str(path) + suffix):
+                raise RuntimeError(f"Falta {path} pero existe {path}{suffix}. Revisa los archivos de SQLite.")
+        try:
+            initialize()
+        except FileExistsError:
+            # Otro arranque pudo crear el archivo. Se valida después, igual que uno existente.
+            return False
+        return True
+    return False
+
+
 def create_tables(_new=False):
     """Migración explícita, respaldada y atómica; no crea archivos ausentes."""
     with closing(db._open()) as conn:
