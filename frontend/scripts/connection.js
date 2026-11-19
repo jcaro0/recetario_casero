@@ -21,10 +21,12 @@ function applyWriteAccess() {
     const locked = !canWrite();
     document.documentElement.toggleAttribute("data-readonly", locked);
     document.querySelectorAll("[data-write]").forEach(element => {
-        element.toggleAttribute("inert", locked);
+        const hasDisabled = "disabled" in element;
+        // Los controles nativos deshabilitados siguen exponiendo su texto y valor.
+        element.toggleAttribute("inert", locked && (!hasDisabled || element.matches("fieldset")));
         if (locked) element.setAttribute("aria-disabled", "true");
         else element.removeAttribute("aria-disabled");
-        if (!("disabled" in element)) return;
+        if (!hasDisabled) return;
         if (locked && !element.disabled) {
             element.disabled = true;
             element.dataset.connectionDisabled = "";

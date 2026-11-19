@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <title>{{ title }}</title>
     <meta name="theme-color" content="#FBF3E7">
     <link rel="manifest" href="/manifest.webmanifest">
@@ -14,26 +14,30 @@
 <body>
 
 <div class="app-header">
-    <header class="topbar">
-        <div class="logo">{{ icon }} <span id="pageBrand">{{ brand }}</span></div>
-        <nav class="top-nav">
-            {% for target, symbol, label in [
-                ("menu", "calendar_month", "Menú"),
-                ("lista_compra", "shopping_cart", "Compra"),
-                ("recetas", "menu_book", "Recetas"),
-                ("agregar_recetas", "add_circle", "Añadir")
-            ] %}
-            <a href="{{ target }}.html" class="nav-link{% if target == page %} active{% endif %}">
-                <span class="material-symbols-rounded">{{ symbol }}</span>
-                {{ label }}
-            </a>
-            {% endfor %}
-        </nav>
-        {% if can_share %}
-        <button class="icon-button" id="shareMenuButton">
-            <span class="material-symbols-rounded">share</span>
-        </button>
-        {% endif %}
+    <header>
+        <div class="topbar">
+            <div class="logo"><span class="brand-icon" aria-hidden="true">{{ icon }}</span> <span id="pageBrand">{{ brand }}</span></div>
+            <nav class="top-nav" aria-label="Secciones de Recetario">
+                {% for target, symbol, label in [
+                    ("menu", "calendar_month", "Menú"),
+                    ("lista_compra", "shopping_cart", "Compra"),
+                    ("recetas", "menu_book", "Recetas"),
+                    ("agregar_recetas", "add_circle", "Añadir")
+                ] %}
+                <a href="{{ target }}.html" class="nav-link{% if target == page %} active{% endif %}"{% if target == page %} aria-current="page"{% endif %}>
+                    <span class="material-symbols-rounded" aria-hidden="true">{{ symbol }}</span>
+                    {{ label }}
+                </a>
+                {% endfor %}
+            </nav>
+            <div class="header-actions">
+                {% if share_label %}
+                <button type="button" class="icon-button" id="shareMenuButton" aria-label="{{ share_label }}" aria-haspopup="dialog" title="{{ share_label }}">
+                    <span class="material-symbols-rounded" aria-hidden="true">share</span>
+                </button>
+                {% endif %}
+            </div>
+        </div>
     </header>
     <p id="connectionStatus" class="connection-status hidden" role="status" aria-live="polite"></p>
     <div id="toast" class="toast" hidden>
@@ -46,19 +50,6 @@
     <div id="noticeStatus" class="visually-hidden" role="status"></div>
     <div id="noticeError" class="visually-hidden" role="alert"></div>
 </div>
-
-{% if can_share %}
-<div class="dropdown hidden" id="shareDropdown">
-    {% for method, symbol, label in [
-        ("copy", "content_copy", "Copiar"), ("whatsapp", "chat", "WhatsApp"), ("email", "mail", "Email")
-    ] %}
-    <button data-share="{{ method }}">
-        <span class="material-symbols-rounded">{{ symbol }}</span>
-        {{ label }}
-    </button>
-    {% endfor %}
-</div>
-{% endif %}
 
 {% block content %}{% endblock %}
 
@@ -78,6 +69,27 @@
         </div>
     </form>
 </dialog>
+
+{% if share_label or page == "recetas" %}
+<dialog id="shareDialog" class="modal" aria-labelledby="shareTitle">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="shareTitle"></h2>
+            <button type="button" class="icon-button" data-dialog-close aria-label="Cerrar">
+                <span class="material-symbols-rounded" aria-hidden="true">close</span>
+            </button>
+        </div>
+        <label for="sharePreview">Texto para compartir</label>
+        <textarea id="sharePreview" readonly rows="6"></textarea>
+        <p id="shareHint" role="status"></p>
+        <div class="share-options">
+            <button type="button" class="primary" data-share="copy" autofocus>Copiar texto</button>
+            <a class="secondary" data-share="whatsapp" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+            <a class="secondary" data-share="email">Correo</a>
+        </div>
+    </div>
+</dialog>
+{% endif %}
 
 <script src="scripts/script.js"></script>
 <script src="scripts/connection.js"></script>

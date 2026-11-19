@@ -5,21 +5,14 @@
 
 {% block content %}
 <main class="container">
+    <section class="hero">
+        <h1>Todas tus recetas</h1>
+        <p>Abre una receta para ver sus ingredientes, preparación y notas.</p>
+    </section>
 
-<section class="hero recipeHero">
+    <label for="catalogSearch">Buscar recetas o ingredientes</label>
+    <input id="catalogSearch" class="catalog-search" type="search" placeholder="Buscar recetas…" autocomplete="off">
 
-    <h1>Todas tus recetas</h1>
-
-    <p>Toca una receta para ver sus ingredientes, preparación y notas.</p>
-
-</section>
-
-<label for="catalogSearch">Buscar recetas o ingredientes</label>
-<input id="catalogSearch" class="catalog-search" type="search" placeholder="Buscar recetas…" autocomplete="off">
-
-<div id="recipesContainer" class="recipe-grid">
-
-</div>
-
+    <div id="recipesContainer" class="recipe-grid"></div>
 </main>
 {% endblock %}

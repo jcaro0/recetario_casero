@@ -5,21 +5,6 @@ if (window.isSecureContext && "serviceWorker" in navigator) {
         .catch(error => console.warn("No se pudo preparar Recetario para instalar:", error));
 }
 
-// Evita saltos de scroll al navegar con View Transitions
-document.addEventListener("click", (e) => {
-    const link = e.target.closest("a[href]");
-    if (!link) return;
-    if (link.target === "_blank") return;
-    let url;
-    try {
-        url = new URL(link.href, location.href);
-    } catch {
-        return;
-    }
-    if (url.origin !== location.origin) return;
-    window.scrollTo(0, 0);
-});
-
 const TOAST_KEY = "recetario-notice";
 let toastTimer;
 let toastTrigger;
@@ -29,7 +14,8 @@ function dismissToast(restoreFocus = false) {
     byId("toast").hidden = true;
     byId("noticeStatus").textContent = "";
     byId("noticeError").textContent = "";
-    if (restoreFocus && toastTrigger?.isConnected && !toastTrigger.closest("[inert], :disabled")) {
+    if (restoreFocus && toastTrigger?.isConnected && !toastTrigger.matches("body")
+        && !toastTrigger.closest("[inert], :disabled")) {
         toastTrigger.focus({ preventScroll: true });
     } else if (restoreFocus) {
         document.querySelector(".nav-link.active").focus({ preventScroll: true });
@@ -141,6 +127,8 @@ document.querySelectorAll(".modal").forEach(dialog => {
         const trigger = dialogTriggers.get(dialog);
         if (trigger?.isConnected && !trigger.closest("[inert], :disabled") && trigger.getClientRects().length) {
             trigger.focus({ preventScroll: true });
+        } else if (document.activeElement === document.body) {
+            document.querySelector(".nav-link.active").focus({ preventScroll: true });
         }
     });
 });
@@ -211,36 +199,56 @@ function confirmAction({ title, message, label, trigger, destructive = false, nu
     openDialog(dialog, trigger);
 }
 
-// Dropdown de compartir en la cabecera
-function setupShareDropdown(share) {
-    const button = byId("shareMenuButton");
-    const dropdown = byId("shareDropdown");
-    button.onclick = () => dropdown.classList.toggle("hidden");
-    dropdown.onclick = event => {
-        const option = event.target.closest("[data-share]");
-        if (option) share(option.dataset.share);
-    };
-    document.addEventListener("click", event => {
-        if (!dropdown.contains(event.target) && !button.contains(event.target)) {
-            dropdown.classList.add("hidden");
-        }
-    });
-}
+let sharing = false;
 
-async function shareText(text, type, subject) {
-    switch (type) {
-        case "copy":
-            await navigator.clipboard.writeText(text);
-            notify("Texto copiado al portapapeles", "success");
-            break;
-        case "whatsapp":
-            window.open("https://wa.me/?text=" + encodeURIComponent(text));
-            break;
-        case "email":
-            window.location = "mailto:?subject=" + encodeURIComponent(subject) +
-                "&body=" + encodeURIComponent(text);
-            break;
+async function shareContent(title, text, trigger) {
+    if (sharing || byId("shareDialog").open) return;
+    if (!text) {
+        notify("Todavía no hay contenido para compartir.");
+        return;
     }
+    const data = { title, text };
+    let hint = "";
+    try {
+        if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+            sharing = true;
+            await navigator.share(data);
+            return;
+        }
+    } catch (error) {
+        if (error.name === "AbortError") return;
+        hint = "Puedes compartir el texto con estas opciones.";
+    } finally {
+        sharing = false;
+    }
+    const dialog = byId("shareDialog");
+    byId("shareTitle").textContent = title;
+    const preview = byId("sharePreview");
+    preview.value = text;
+    byId("shareHint").textContent = hint;
+    const whatsapp = dialog.querySelector('[data-share="whatsapp"]');
+    whatsapp.href = "https://wa.me/?text=" + encodeURIComponent(text);
+    const email = dialog.querySelector('[data-share="email"]');
+    email.href = "mailto:?subject=" + encodeURIComponent(title) + "&body=" + encodeURIComponent(text);
+    const copy = dialog.querySelector('[data-share="copy"]');
+    copy.onclick = async () => {
+        if (sharing) return;
+        sharing = true;
+        try {
+            await navigator.clipboard.writeText(text);
+            dialog.close();
+            notify("Texto copiado al portapapeles", "success");
+        } catch {
+            if (dialog.open) {
+                preview.focus();
+                preview.select();
+                byId("shareHint").textContent = "Texto seleccionado. Usa la opción Copiar de tu dispositivo.";
+            }
+        } finally {
+            sharing = false;
+        }
+    };
+    openDialog(dialog, trigger);
 }
 
 // Formateador común para ingredientes

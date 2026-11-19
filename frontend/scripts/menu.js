@@ -6,11 +6,12 @@ const MEALS = [
 let currentEditSlot = null; // { day, meal }
 let recipeOptions = null;
 let weeklyMenu = {};
+let menuDays = [];
 let savingWeekPeople = false;
 let weekPeople = 2;
 
 document.addEventListener("DOMContentLoaded", () => {
-    setupShareDropdown(shareMenu);
+    byId("shareMenuButton").onclick = event => shareMenu(event.currentTarget);
     loadWeeklyMenu();
     document.addEventListener("recetario:refreshed", loadWeeklyMenu);
     byId("generateButton").onclick = event => confirmRegenerate(event.currentTarget);
@@ -43,23 +44,13 @@ function capitalize(text) {
     return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-// Compartir menú semanal
-async function shareMenu(type) {
-    try {
-        const [days, menu] = await Promise.all([api("/days"), api("/menu")]);
-        let text = "🍽️ MENÚ SEMANAL\n\n";
-        days.forEach(day => {
-            text += `${capitalize(day)}\n`;
-            MEALS.forEach(meal => {
-                const recipe = menu[day]?.[meal.key];
-                text += `  ${meal.label}: ${recipe?.name || "Sin receta"}\n`;
-            });
-            text += "\n";
-        });
-        await shareText(text.trim(), type, "Menú semanal");
-    } catch (e) {
-        notify("No se pudo compartir el menú. " + e.message, "error");
-    }
+function shareMenu(trigger) {
+    const hasRecipes = menuDays.some(day => MEALS.some(meal => weeklyMenu[day]?.[meal.key]?.name));
+    const text = hasRecipes ? "🍽️ MENÚ SEMANAL\n\n" + menuDays.map(day => [
+        capitalize(day),
+        ...MEALS.map(meal => `  ${meal.label}: ${weeklyMenu[day]?.[meal.key]?.name || "Sin receta"}`)
+    ].join("\n")).join("\n\n") : "";
+    shareContent("Menú semanal", text, trigger);
 }
 
 // Carga del menú semanal
@@ -96,6 +87,7 @@ async function loadWeeklyMenu() {
             api("/menu"), api("/menu/people")
         ]);
         weeklyMenu = menu;
+        menuDays = days;
         weekPeople = settings.people;
         byId("weekPeople").value = weekPeople;
 

@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
     byId("manualCancel").onclick = resetManualForm;
     manualUnit = createUnitSelector("manualUnit");
     byId("manualUnitField").replaceWith(manualUnit.element);
-    setupShareDropdown(shareShopping);
+    byId("shareMenuButton").onclick = event => shareShopping(event.currentTarget);
     loadShoppingList();
     document.addEventListener("recetario:refreshed", loadShoppingList);
     document.addEventListener("recetario:locked", resetManualForm);
@@ -172,22 +172,11 @@ async function onToggleItem(e) {
 }
 
 // Exportar: los ingredientes ya comprados llevan ✅, el resto un punto
-// Exportar: los ingredientes ya comprados llevan ✅, el resto un punto
-async function shareShopping(type) {
-    try {
-        const shopping = await api("/shopping-list");
-        if (shopping.length === 0) {
-            notify("Todavía no hay contenido para compartir.");
-            return;
-        }
-        let text = "🛒 LISTA DE LA COMPRA\n\n";
-        shopping.forEach(item => {
-            const qty = shoppingAmount(item);
-            const mark = item.checked ? "✅" : "•";
-            text += qty ? `${mark} ${item.name} (${qty})\n` : `${mark} ${item.name}\n`;
-        });
-        await shareText(text, type, "Lista de la compra");
-    } catch (e) {
-        notify("No se pudo compartir la lista. " + e.message, "error");
-    }
+function shareShopping(trigger) {
+    const text = shoppingItems.length ? "🛒 LISTA DE LA COMPRA\n\n" + shoppingItems.map(item => {
+        const qty = shoppingAmount(item);
+        const mark = item.checked ? "✅" : "•";
+        return `${mark} ${item.name}${qty ? ` (${qty})` : ""}`;
+    }).join("\n") : "";
+    shareContent("Lista de la compra", text, trigger);
 }

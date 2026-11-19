@@ -53,6 +53,30 @@ def check_pwa(browser, base, results, next_release):
     for path in ("recetas.html", "lista_compra.html", "agregar_recetas.html", "menu.html"):
         page.locator(f'nav a[href="{path}"]').click()
         expect(page.locator(".nav-link.active")).to_have_attribute("href", path)
+    expect(page.locator(".day-card").first).to_be_visible()
+    page.evaluate("""() => {
+        window.shared = [];
+        navigator.share = async data => {
+            window.shared.push({ ...data, active: navigator.userActivation.isActive });
+            if (window.shareError) throw new DOMException("", window.shareError);
+        };
+        navigator.canShare = () => true;
+    }""")
+    share = page.get_by_role("button", name="Compartir menú")
+    share.click()
+    data = page.evaluate("window.shared[0]")
+    assert data["active"] and data["title"] == "Menú semanal" and "MENÚ SEMANAL" in data["text"]
+    expect(page.locator("#shareDialog")).to_be_hidden()
+    page.evaluate('window.shareError = "AbortError"')
+    share.click()
+    expect(page.locator("#shareDialog")).to_be_hidden()
+    expect(page.locator("#toast")).to_be_hidden()
+    page.evaluate('window.shareError = "NotAllowedError"')
+    share.click()
+    expect(page.locator("#shareDialog")).to_be_visible()
+    expect(page.locator("#shareHint")).to_contain_text("estas opciones")
+    page.keyboard.press("Escape")
+    expect(share).to_be_focused()
     capture(page, results / "pwa-mobile.png")
 
     # Simula publicar un worker y recursos nuevos sin escribir archivos de la app.
@@ -84,7 +108,7 @@ def check_pwa(browser, base, results, next_release):
     finally:
         next_release.clear()
         context.close()
-    print("OK: manifest, iconos, Service Worker, navegación móvil y actualización de recursos")
+    print("OK: manifest, iconos, Service Worker, navegación, compartir nativo simulado y actualización de recursos")
 
 
 def check_offline(browser, base, results, unavailable_snapshot):
@@ -110,7 +134,7 @@ def check_offline(browser, base, results, unavailable_snapshot):
                if req.method not in ("GET", "HEAD", "OPTIONS") else None)
 
     def observe_errors(tab):
-        tab.on("pageerror", lambda error: errors.append(str(error)) if str(error) != "Transition was skipped" else None)
+        tab.on("pageerror", lambda error: errors.append(str(error)))
         tab.on("console", lambda message: errors.append(message.text) if message.type == "error"
                and not message.text.startswith("Failed to load resource:") else None)
 
@@ -136,7 +160,8 @@ def check_offline(browser, base, results, unavailable_snapshot):
         expect(page.locator("#weekPeople")).to_be_disabled()
         expect(page.locator("#generateButton")).to_be_disabled()
         expect(page.locator(".meal-slot").first).to_have_attribute("draggable", "false")
-        expect(page.locator(".meal-slot .food").first).to_be_disabled()
+        meal = page.get_by_role("button", name=f"Cambiar comida de {day}: Desde casa")
+        expect(meal).to_be_disabled()
         page.locator(".meal-slot .meal-label").first.click()
         expect(page.locator("#chooseRecipeModal")).to_be_hidden()
         page.evaluate("window.scrollTo(0, 600)")
@@ -178,6 +203,9 @@ def check_offline(browser, base, results, unavailable_snapshot):
             box.dispatchEvent(new Event("change", {bubbles: true}));
         }""")
         expect(product.locator("input")).to_be_checked()
+        page.get_by_role("button", name="Compartir lista de la compra").click()
+        expect(page.locator("#sharePreview")).to_have_value(re.compile("Papel de cocina"))
+        page.keyboard.press("Escape")
         capture(page, results / "offline-compra-mobile.png")
         before = page.evaluate("async () => await snapshotStorage()")
 
@@ -320,7 +348,7 @@ def run():
                 page = browser.new_page(viewport={"width": 1280, "height": 900})
                 page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=base)
                 errors = []
-                page.on("pageerror", lambda error: errors.append(str(error)) if str(error) != "Transition was skipped" else None)
+                page.on("pageerror", lambda error: errors.append(str(error)))
                 network_errors = []
                 console_errors = []
                 page.on("response", lambda response: network_errors.append(f"{response.status} {response.url}")

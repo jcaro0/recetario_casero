@@ -1,21 +1,20 @@
 let catalogRecipes = [];
+let expandedRecipe = null;
+
 const searchKey = value => String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 document.addEventListener("DOMContentLoaded", () => {
     loadRecipesView();
     document.addEventListener("recetario:refreshed", loadRecipesView);
-    setupRecipeExpansion();
+    byId("recipesContainer").addEventListener("click", onRecipeAction);
     byId("catalogSearch").addEventListener("input", renderRecipes);
 });
 
 async function loadRecipesView() {
     const list = byId("recipesContainer");
-    list.innerHTML = "<p>Cargando recetas...</p>";
+    if (!list.hasChildNodes()) list.innerHTML = '<p class="loading-state">Cargando recetas…</p>';
     try {
         catalogRecipes = await api("/recipes");
-        if (catalogRecipes.length === 0) {
-            list.innerHTML = emptyStateHtml("No hay recetas añadidas");
-            return;
-        }
         renderRecipes();
     } catch (error) {
         list.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
@@ -24,52 +23,78 @@ async function loadRecipesView() {
 
 function renderRecipes() {
     const list = byId("recipesContainer");
-    if (!catalogRecipes.length) return;
     const query = searchKey(byId("catalogSearch").value.trim());
-    const recipes = catalogRecipes.filter(recipe => searchKey([recipe.name, ...recipe.ingredients.map(i => i.name)].join(" ")).includes(query));
-    if (!recipes.length) { list.innerHTML = "<p>No hay recetas que coincidan.</p>"; return; }
+    const recipes = catalogRecipes.filter(recipe =>
+        searchKey([recipe.name, ...recipe.ingredients.map(ingredient => ingredient.name)].join(" ")).includes(query));
+    if (!recipes.length) {
+        list.innerHTML = catalogRecipes.length
+            ? "<p>No hay recetas que coincidan.</p>" : emptyStateHtml("No hay recetas añadidas");
+        return;
+    }
     list.innerHTML = recipes.map(recipe => `
-            <div class="recipe-card" data-id="${recipe.id}">
-                <div class="recipe-card-header">
-                    <div>
-                        <h3>${escapeHtml(recipe.name)}</h3>
-                        <small>${recipe.ingredients.length} ingredientes · ${recipe.servings || 2} raciones</small>
+        <article class="recipe-card" data-id="${recipe.id}">
+            <h2 class="recipe-card-title">
+                <button type="button" class="recipe-card-header" aria-expanded="${expandedRecipe === recipe.id}" aria-controls="recipe-${recipe.id}">
+                    <span class="recipe-name">${escapeHtml(recipe.name)}</span>
+                    <span class="recipe-meta">
+                        <span>${recipe.ingredients.length} ${recipe.ingredients.length === 1 ? "ingrediente" : "ingredientes"} · ${recipe.servings || 2} raciones</span>
                         ${typeBadge(recipe.type)}
-                    </div>
-                </div>
-                <a class="editRecipe" data-write href="agregar_recetas.html?id=${recipe.id}" aria-label="Editar ${escapeHtml(recipe.name)}">Editar</a>
-                <button aria-label="Eliminar ${escapeHtml(recipe.name)}"
-                    class="deleteRecipe" data-write
-                    onclick="deleteRecipe(${recipe.id}, this)" aria-haspopup="dialog">
-                    <span class="material-symbols-rounded">delete</span>
+                    </span>
                 </button>
-                <div class="ingredients-panel"><h4>Ingredientes</h4><ul>
-                    ${recipe.ingredients.map(i => `
-                        <li>${escapeHtml(i.name)}${escapeHtml(formatQtyUnit(i.qty, i.unit, " - "))}</li>
-                    `).join("")}
-                </ul>
-                ${(recipe.preparation || []).length ? `<h4>Preparación</h4><ol>${recipe.preparation.map(step => `<li class="recipe-text">${escapeHtml(step)}</li>`).join("")}</ol>` : ""}
-                ${recipe.notes ? `<h4>Notas</h4><p class="recipe-text">${escapeHtml(recipe.notes)}</p>` : ""}
-                </div>
+            </h2>
+            <div class="recipe-actions">
+                <a class="secondary editRecipe" data-write href="agregar_recetas.html?id=${recipe.id}"
+                    aria-label="Editar ${escapeHtml(recipe.name)}">Editar</a>
+                <button type="button" aria-label="Eliminar ${escapeHtml(recipe.name)}" aria-haspopup="dialog" class="icon-button deleteRecipe" data-write>
+                    <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                </button>
             </div>
-        `).join("");
+            <div id="recipe-${recipe.id}" class="ingredients-panel"${expandedRecipe === recipe.id ? "" : " hidden"}>
+                <button type="button" class="secondary shareRecipe" aria-label="Compartir ${escapeHtml(recipe.name)}" aria-haspopup="dialog">
+                    <span class="material-symbols-rounded" aria-hidden="true">share</span> Compartir receta
+                </button>
+                <h3>Ingredientes</h3>
+                <ul>${recipe.ingredients.map(ingredient => `<li>${escapeHtml(ingredientLine(ingredient))}</li>`).join("")}</ul>
+                ${recipe.preparation?.length ? `<h3>Preparación</h3><ol>${recipe.preparation.map(step =>
+                    `<li class="recipe-text">${escapeHtml(step)}</li>`).join("")}</ol>` : ""}
+                ${recipe.notes ? `<h3>Notas</h3><p class="recipe-text">${escapeHtml(recipe.notes)}</p>` : ""}
+            </div>
+        </article>
+    `).join("");
     applyWriteAccess();
 }
 
-function setupRecipeExpansion() {
-    document.addEventListener("click", (e) => {
-        if (e.target.closest(".deleteRecipe, .editRecipe")) return;
-        const card = e.target.closest(".recipe-card");
-        document.querySelectorAll(".recipe-card.expanded").forEach(c => {
-            if (c !== card) c.classList.remove("expanded");
-        });
-        if (card) card.classList.toggle("expanded");
-    });
+function ingredientLine(ingredient) {
+    const amount = formatQtyUnit(ingredient.qty, ingredient.unit) || ingredient.unit;
+    return amount ? `${ingredient.name} — ${amount}` : ingredient.name;
 }
 
-function deleteRecipe(id, trigger) {
-    const recipe = catalogRecipes.find(item => item.id === id);
+function onRecipeAction(event) {
+    const button = event.target.closest("button");
+    const card = button?.closest(".recipe-card");
+    if (!card) return;
+    const recipe = catalogRecipes.find(recipe => recipe.id === Number(card.dataset.id));
     if (!recipe) return;
+    if (button.matches(".recipe-card-header")) {
+        expandedRecipe = expandedRecipe === recipe.id ? null : recipe.id;
+        byId("recipesContainer").querySelectorAll(".recipe-card-header").forEach(trigger => {
+            const expanded = Number(trigger.closest(".recipe-card").dataset.id) === expandedRecipe;
+            trigger.setAttribute("aria-expanded", expanded);
+            byId(trigger.getAttribute("aria-controls")).hidden = !expanded;
+        });
+    } else if (button.matches(".deleteRecipe")) {
+        deleteRecipe(recipe, button);
+    } else if (button.matches(".shareRecipe")) {
+        const sections = [recipe.name, `${recipe.servings || 2} raciones`, "Ingredientes\n" +
+            recipe.ingredients.map(ingredient => "• " + ingredientLine(ingredient)).join("\n")];
+        if (recipe.preparation?.length) sections.push("Preparación\n" +
+            recipe.preparation.map((step, index) => `${index + 1}. ${step}`).join("\n"));
+        if (recipe.notes) sections.push("Notas\n" + recipe.notes);
+        shareContent(recipe.name, sections.join("\n\n"), button);
+    }
+}
+
+function deleteRecipe(recipe, trigger) {
     confirmAction({
         title: "¿Eliminar la receta?",
         message: `Se eliminará «${recipe.name}» del recetario. Esta acción no se puede deshacer.`,
@@ -80,6 +105,7 @@ function deleteRecipe(id, trigger) {
         errorPrefix: "No se pudo eliminar la receta. ",
         action: () => api(`/recipes/${recipe.id}`, "DELETE"),
         onSuccess: async () => {
+            if (expandedRecipe === recipe.id) expandedRecipe = null;
             await loadRecipesView();
             byId("catalogSearch").focus({ preventScroll: true });
             notify("Receta eliminada", "success");
