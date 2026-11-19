@@ -18,12 +18,25 @@ import database as db
 from main import app
 
 
+def capture(page, path):
+    page.evaluate("async () => { await document.fonts.ready; }")
+    page.wait_for_function("() => !document.getAnimations().some(animation => animation.playState === 'running')")
+    page.screenshot(path=str(path), full_page=True, animations="disabled")
+
+
 def check_pwa(browser, base, results, next_release):
     context = browser.new_context(viewport={"width": 375, "height": 812})
     page = context.new_page()
     page.goto(base + "/")
     expect(page.get_by_role("heading", name="Tu menú de esta semana")).to_be_visible()
     page.wait_for_function("() => Boolean(navigator.serviceWorker.controller)")
+    icon = page.locator(".nav-link .material-symbols-rounded").first
+    assert icon.evaluate("""async element => {
+        await document.fonts.ready;
+        return getComputedStyle(element).fontFamily.includes("Material Symbols Rounded")
+            && document.fonts.check('24px "Material Symbols Rounded"')
+            && element.scrollWidth <= element.clientWidth + 1;
+    }"""), "La fuente local debe renderizar la ligadura del icono"
     assert page.locator('link[rel="manifest"]').get_attribute("href") == "/manifest.webmanifest"
     manifest = page.request.get(base + "/manifest.webmanifest")
     assert manifest.headers["content-type"].startswith("application/manifest+json")
@@ -40,7 +53,7 @@ def check_pwa(browser, base, results, next_release):
     for path in ("recetas.html", "lista_compra.html", "agregar_recetas.html", "menu.html"):
         page.locator(f'nav a[href="{path}"]').click()
         expect(page.locator(".nav-link.active")).to_have_attribute("href", path)
-    page.screenshot(path=str(results / "pwa-mobile.png"), full_page=True)
+    capture(page, results / "pwa-mobile.png")
 
     # Simula publicar un worker y recursos nuevos sin escribir archivos de la app.
     next_release.set()
@@ -127,7 +140,7 @@ def check_offline(browser, base, results, unavailable_snapshot):
         notice = banner.bounding_box()
         assert header["y"] + header["height"] <= notice["y"] < 812
         page.evaluate("window.scrollTo(0, 0)")
-        page.screenshot(path=str(results / "offline-menu-mobile.png"), full_page=True)
+        capture(page, results / "offline-menu-mobile.png")
 
         page.locator('nav a[href="recetas.html"]').click()
         page.locator("#catalogSearch").fill("desde")
@@ -139,7 +152,7 @@ def check_offline(browser, base, results, unavailable_snapshot):
         expect(card).to_contain_text("Pimiento")
         expect(card.locator(".editRecipe")).to_be_disabled()
         expect(card.locator(".deleteRecipe")).to_be_disabled()
-        page.screenshot(path=str(results / "offline-recetas-mobile.png"), full_page=True)
+        capture(page, results / "offline-recetas-mobile.png")
         page.goto(base + f"/agregar_recetas.html?id={recipe_id}")
         expect(page.locator("#recipeName")).to_have_value("Desde casa")
         expect(page.locator("#recipeName")).to_be_disabled()
@@ -161,7 +174,7 @@ def check_offline(browser, base, results, unavailable_snapshot):
             box.dispatchEvent(new Event("change", {bubbles: true}));
         }""")
         expect(product.locator("input")).to_be_checked()
-        page.screenshot(path=str(results / "offline-compra-mobile.png"), full_page=True)
+        capture(page, results / "offline-compra-mobile.png")
         before = page.evaluate("async () => await snapshotStorage()")
 
         # Intentos directos contra el mismo cliente de API que usan los controles.
@@ -487,8 +500,11 @@ def run():
                 assert all(before[d][m]["id"] == after[d][m]["id"] for d in before for m in db.MEALS)
                 assert all(r["people"] == 4 for meals in after.values() for r in meals.values())
                 page.locator(".slot-people input").first.fill("7")
-                page.locator(".slot-people input").first.press("Enter")
-                expect(page.locator(".slot-people input").first).to_have_value("7")
+                with page.expect_response(lambda response: response.request.method == "POST"
+                                          and response.url.endswith(f"/menu/{db.DAYS[0]}/comida")) as updated_slot:
+                    page.locator(".slot-people input").first.press("Enter")
+                assert updated_slot.value.ok
+                expect(page.locator(".slot-people input").first).to_be_enabled()
                 page.reload()
                 expect(page.locator("#weekPeople")).to_have_value("4")
                 expect(page.locator(".slot-people input").first).to_have_value("7")
@@ -605,7 +621,7 @@ def run():
                 assert page.evaluate('async () => (await navigator.clipboard.readText()).includes("✅ Detergente (3 botellas)")')
                 product.get_by_role("checkbox").click()
                 expect(product).to_have_class("shopping-item")
-                page.screenshot(path=str(results / "manual-shopping-mobile.png"), full_page=True)
+                capture(page, results / "manual-shopping-mobile.png")
                 page.once("dialog", lambda dialog: dialog.accept())
                 product.get_by_role("button", name="Eliminar Detergente").click()
                 expect(product).to_have_count(0)
