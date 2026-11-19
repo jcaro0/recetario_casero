@@ -22,7 +22,7 @@ Ejecutar las pruebas no instala nada:
 ./ejecutar_test.sh          # Todas: backend, arranque/reinicio y navegador real
 ./ejecutar_test.sh backend # API, SQLite, migraciones y operaciones
 ./ejecutar_test.sh startup # Lanzador Raspberry y Waitress con reinicio real
-./ejecutar_test.sh browser # Interfaz con Chromium, escritorio y móvil de 375 px
+./ejecutar_test.sh browser # Chromium, escritorio, móvil y orientación horizontal
 ```
 
 Para reutilizar un entorno de desarrollo existente:
@@ -95,3 +95,9 @@ al servidor y recuperar la conexión. Comprueba también que un fallo de descarg
 mantiene bloqueada la escritura y que la reconexión muestra los cambios de otra
 sesión. Se usan únicamente bases SQLite temporales. La instalación real en
 Android e iPhone y el HTTPS de la Raspberry se comprueban por separado.
+
+La prueba de interfaz comprueba la cabecera entre 320 y 1280 px, la navegación
+con movimiento reducido, las unidades personalizadas, y el foco y la cancelación
+de los diálogos. Simula fallos del servidor para verificar el aviso de error, la
+conservación del formulario y el reintento manual. Para compartir, usa el
+portapapeles de Chromium y simula la API nativa y sus errores.

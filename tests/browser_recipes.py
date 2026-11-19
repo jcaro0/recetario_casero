@@ -310,6 +310,172 @@ def check_offline_without_data(browser, base, unavailable_snapshot):
     print("OK: interfaz disponible sin conexión incluso si aún no hay copia de recetas")
 
 
+def check_refined_ui(browser, base, results):
+    context = browser.new_context(
+        viewport={"width": 320, "height": 640}, is_mobile=True, has_touch=True,
+        reduced_motion="reduce", service_workers="block",
+    )
+    page = context.new_page()
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+
+    def navigation_geometry():
+        return page.locator("nav a").evaluate_all("""links => links.map(link => {
+            const {x, y, width, height} = link.getBoundingClientRect();
+            return [x, y, width, height];
+        })""")
+
+    try:
+        for width, height in ((320, 640), (412, 915), (667, 375), (1280, 900)):
+            page.set_viewport_size({"width": width, "height": height})
+            positions = None
+            page.goto(base + "/")
+            for path, can_share in (("menu", True), ("lista_compra", True), ("recetas", False), ("agregar_recetas", False)):
+                filename = path + ".html"
+                page.locator(f'nav a[href="{filename}"]').click()
+                current = page.locator('nav a[aria-current="page"]')
+                expect(current).to_have_attribute("href", filename)
+                expect(page.locator("#shareMenuButton")).to_have_count(int(can_share))
+                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (width, filename)
+                assert current.evaluate("""link => {
+                    const marker = getComputedStyle(link, "::after");
+                    return marker.height === "2px" && marker.bottom === "0px"
+                        && getComputedStyle(link).transitionDuration === "0s";
+                }""")
+                geometry = navigation_geometry()
+                if positions is None:
+                    positions = geometry
+                assert geometry == positions, (width, filename, geometry, positions)
+
+            page.go_back()
+            expect(page.locator('nav a[aria-current="page"]')).to_have_attribute("href", "recetas.html")
+            page.reload()
+            assert navigation_geometry() == positions
+
+        page.set_viewport_size({"width": 320, "height": 640})
+        page.goto(base + "/agregar_recetas.html")
+        name = page.locator("#recipeName")
+        expect(name).to_be_enabled()
+        name.fill("Receta de prueba del diálogo")
+        page.locator(".ingredient-name").first.fill("Miso blanco")
+        qty = page.locator(".ingredient-qty").first
+        qty.fill("2")
+        selector = page.locator(".ingredient-unit").first
+        recipe_options = selector.locator("option").all_text_contents()
+        selector.select_option("__custom__")
+        custom = page.locator(".custom-unit").first
+        expect(custom).to_be_focused()
+        submit = page.locator(".submitButton")
+        submit.click()
+        expect(custom).to_be_focused()
+        assert not custom.evaluate("field => field.validity.valid")
+        custom.fill("porciones")
+        page.locator("#recipeNotes").fill("Conservar estas notas")
+
+        create_requests = []
+        page.route("**/recipes", lambda route: create_requests.append(route)
+                   if route.request.method == "POST" else route.continue_())
+        with page.expect_request(lambda req: req.url == base + "/recipes" and req.method == "POST"):
+            submit.click()
+        expect(page.locator("#formStatus")).to_have_text("Guardando receta…")
+        expect(submit).to_be_disabled()
+        expect(page.locator("#toast")).to_be_hidden()
+        assert len(create_requests) == 1
+        create_requests[0].fulfill(status=503, json={"error": "Guardado temporalmente no disponible"})
+        expect(page.locator("#toast")).to_have_attribute("data-kind", "error")
+        expect(page.locator("#noticeError")).to_contain_text("Guardado temporalmente no disponible")
+        expect(name).to_have_value("Receta de prueba del diálogo")
+        expect(custom).to_have_value("porciones")
+        page.unroute("**/recipes")
+        submit.click()
+        expect(page.locator("#toast")).to_have_attribute("data-kind", "success")
+        expect(page.locator("#noticeStatus")).to_have_text("Receta añadida correctamente")
+        assert page.locator("#toast").bounding_box()["y"] < 640
+        page.screenshot(path=str(results / "success-mobile.png"))
+
+        saved = next(recipe for recipe in page.request.get(base + "/recipes").json()
+                     if recipe["name"] == "Receta de prueba del diálogo")
+        assert saved["ingredients"][0]["unit"] == "porciones"
+        page.goto(base + f'/agregar_recetas.html?id={saved["id"]}')
+        expect(custom).to_have_value("porciones")
+        page.goto(base + "/lista_compra.html")
+        assert page.locator("#manualUnit option").all_text_contents() == recipe_options
+
+        page.goto(base + "/recetas.html")
+        page.evaluate("""() => {
+            Object.defineProperty(navigator, "share", {value: undefined});
+            Object.defineProperty(navigator, "clipboard", {
+                value: { writeText: () => Promise.reject(new DOMException("", "NotAllowedError")) }
+            });
+        }""")
+        card = page.locator(f'.recipe-card[data-id="{saved["id"]}"]')
+        card.locator(".recipe-card-header").press("Enter")
+        share_trigger = card.get_by_role("button", name="Compartir Receta de prueba del diálogo")
+        share_trigger.click()
+        expect(page.locator("#sharePreview")).to_have_value(re.compile("2 porciones.*Conservar estas notas", re.S))
+        expect(page.locator('[data-share="whatsapp"]')).to_have_attribute("href", re.compile(r"^https://wa.me/"))
+        expect(page.locator('[data-share="email"]')).to_have_attribute("href", re.compile(r"^mailto:"))
+        page.get_by_role("button", name="Copiar texto").click()
+        expect(page.locator("#sharePreview")).to_be_focused()
+        assert page.locator("#sharePreview").evaluate("field => field.selectionEnd === field.value.length")
+        expect(page.locator("#shareHint")).to_contain_text("Texto seleccionado")
+        page.keyboard.press("Escape")
+        expect(share_trigger).to_be_focused()
+
+        recipe_url = base + f'/recipes/{saved["id"]}'
+        delete = card.get_by_role("button", name="Eliminar Receta de prueba del diálogo")
+        delete.click()
+        dialog = page.get_by_role("dialog", name="¿Eliminar la receta?")
+        cancel = dialog.get_by_role("button", name="Cancelar")
+        confirm = dialog.get_by_role("button", name="Eliminar receta")
+        expect(dialog).to_contain_text("«Receta de prueba del diálogo»")
+        expect(dialog).to_contain_text("Esta acción no se puede deshacer")
+        expect(cancel).to_be_focused()
+        page.keyboard.press("Shift+Tab")
+        expect(confirm).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(cancel).to_be_focused()
+        page.screenshot(path=str(results / "delete-mobile.png"))
+        page.set_viewport_size({"width": 320, "height": 280})
+        bounds = dialog.bounding_box()
+        assert bounds["y"] >= 0 and bounds["y"] + bounds["height"] <= 280
+        expect(cancel).to_be_focused()
+        page.set_viewport_size({"width": 320, "height": 640})
+        page.keyboard.press("Enter")
+        expect(dialog).to_be_hidden()
+        expect(delete).to_be_focused()
+        assert page.request.get(recipe_url).json() == saved
+
+        deletion_requests = []
+        page.route(recipe_url, lambda route: deletion_requests.append(route)
+                   if route.request.method == "DELETE" else route.continue_())
+        delete.click()
+        with page.expect_request(lambda req: req.url == recipe_url and req.method == "DELETE"):
+            confirm.click()
+        expect(dialog).to_have_attribute("aria-busy", "true")
+        expect(confirm).to_be_disabled()
+        expect(cancel).to_be_disabled()
+        page.keyboard.press("Escape")
+        expect(dialog).to_be_visible()
+        page.locator("#actionForm").evaluate("form => form.dispatchEvent(new Event('submit', {cancelable: true}))")
+        assert len(deletion_requests) == 1
+        deletion_requests[0].fulfill(status=503, json={"error": "Borrado temporalmente no disponible"})
+        expect(dialog.get_by_role("alert")).to_contain_text("Borrado temporalmente no disponible")
+        expect(confirm).to_be_focused()
+        assert page.request.get(recipe_url).json() == saved
+
+        page.unroute(recipe_url)
+        confirm.press("Enter")
+        expect(card).to_have_count(0)
+        expect(page.locator("#toast")).to_have_attribute("data-kind", "success")
+        expect(page.locator("#noticeStatus")).to_have_text("Receta eliminada")
+        assert page.request.get(recipe_url).status == 404
+        assert not errors, errors
+    finally:
+        context.close()
+    print("OK: header de 320 a 1280 px, rotación, atrás/recarga, unidades, errores y recuperación, foco y borrado de recetas")
+
+
 def run():
     results = Path(os.environ.get("TEST_RESULTS_DIR", Path(__file__).parent / "results"))
     results.mkdir(exist_ok=True)
@@ -668,6 +834,7 @@ def run():
                 assert not errors, errors
                 assert not network_errors, network_errors
                 assert not console_errors, console_errors
+                check_refined_ui(browser, base, results)
                 check_pwa(browser, base, results, next_release)
                 check_offline(browser, base, results, unavailable_snapshot)
                 check_offline_without_data(browser, base, unavailable_snapshot)
