@@ -25,6 +25,8 @@ def run():
         db._ready = False
         set_up.initialize()
         saved = db.save_recipe('Sobrevive al reinicio', [{'name': 'Sal'}])
+        product_id = db.save_manual_product('Papel', 2, 'paquetes')
+        db.check_manual_product(product_id, True)
         venv = root / 'venv'
         (venv / 'bin').mkdir(parents=True)
         (venv / 'bin/python').write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' "$@"\n')
@@ -47,6 +49,9 @@ def run():
                     try:
                         with urlopen(f'http://127.0.0.1:{port}/recipes', timeout=1) as response:
                             assert json.load(response) == [saved]
+                        with urlopen(f'http://127.0.0.1:{port}/shopping-list', timeout=1) as response:
+                            assert json.load(response) == [dict(manual_id=product_id, name='Papel',
+                                                               qty=2, unit='paquetes', checked=True)]
                         break
                     except OSError:
                         if time.monotonic() > deadline:

@@ -272,6 +272,57 @@ class RecipeTests(unittest.TestCase):
             self.assertEqual(self.client.post('/recipes', json=data).status_code, 400)
         self.assertEqual(self.client.post('/recipes', data='{', content_type='application/json').status_code, 400)
 
+    def test_manual_products_are_independent_and_survive_generation(self):
+        recipe = self.create()
+        self.plan(recipe)
+        path = "/shopping-list/manual"
+        added = self.client.post(path, json={"name": " Arroz ", "qty": "1 1/2", "unit": "g"})
+        self.assertEqual(added.status_code, 201)
+        item_url = f"{path}/{added.json['manual_id']}"
+        self.assertEqual(self.client.patch(item_url, json={"checked": True}).status_code, 200)
+        items = [item for item in self.client.get("/shopping-list").json if item["name"] == "Arroz"]
+        self.assertEqual(len(items), 2)
+        self.assertFalse(items[0]["checked"])
+        self.assertTrue(items[1]["checked"])
+        self.assertEqual(items[1]["qty"], 1.5)
+
+        self.assertEqual(self.client.put(item_url, json={"name": "Pan"}).status_code, 200)
+        for _ in range(len(db.DAYS) * 2 - 1):
+            self.create()
+        self.assertEqual(self.client.post("/menu/generate").status_code, 200)
+        product = next(item for item in self.client.get("/shopping-list").json if "manual_id" in item)
+        self.assertEqual(product, {"manual_id": added.json["manual_id"], "name": "Pan",
+                                   "qty": None, "unit": None, "checked": True})
+        self.assertEqual(self.client.patch(item_url, json={"checked": False}).status_code, 200)
+        self.assertFalse(self.client.get("/shopping-list").json[-1]["checked"])
+        self.assertEqual(self.client.delete(item_url).status_code, 200)
+        self.assertEqual(self.client.delete(item_url).status_code, 404)
+        self.assertFalse(any("manual_id" in item for item in self.client.get("/shopping-list").json))
+        self.assertEqual(self.client.post(path, json={"name": "", "qty": 1}).status_code, 400)
+
+    def test_migrate_v5_preserves_existing_data_and_creates_manual_table(self):
+        import set_up
+        from backup import verify
+        from pathlib import Path
+
+        recipe = self.create()
+        self.plan(recipe, people=5)
+        self.client.post("/shopping-list/check", json={"name": "Arroz", "unit": "g", "checked": True})
+        old_shopping = self.client.get("/shopping-list").json
+        with db.connection() as conn:
+            conn.execute("DROP TABLE manual_products")
+            conn.execute("PRAGMA user_version=5")
+        db._ready = False
+        self.assertRaisesRegex(RuntimeError, "requiere migración", db._ensure_ready)
+        set_up.create_tables()
+        self.assertEqual(db.get_recipe(recipe["id"]), recipe)
+        self.assertEqual(db.get_menu()["lunes"]["comida"]["people"], 5)
+        self.assertEqual(self.client.get("/shopping-list").json, old_shopping)
+        backups = list(Path(os.environ["BACKUP_DIR"]).glob("*.sqlite3"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(verify(backups[0])["version"], 5)
+        self.assertEqual(self.client.post("/shopping-list/manual", json={"name": "Leche"}).status_code, 201)
+
     def test_migrate_v4_with_verified_backup(self):
         recipe = self.create()
         self.plan(recipe, people=4)
