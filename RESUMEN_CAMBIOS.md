@@ -24,7 +24,7 @@ se ha retirado la dependencia de autenticación del guardado, aclarado el botón
 ## Archivos modificados
 
 - Backend: `backend/main.py`, `database.py`, `normalize.py`, `set_up.py`.
-- Frontend: `frontend/menu.html`, `recetas.html`; scripts `agregar_recetas.js`,
+- Frontend: `frontend/templates/menu.html`, `recetas.html`; scripts `agregar_recetas.js`,
   `menu.js`, `recetas.js`, `lista_compra.js`, `script.js`; estilos `menu.css`,
   `recetas.css`, `lista_compra.css`.
 - Configuración/documentación: `.gitignore`, `docker-compose.yaml`,

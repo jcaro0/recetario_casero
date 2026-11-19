@@ -18,5 +18,5 @@ redis-data
 auth*.json
 backups/
 data/
-
+AGENTS.md
 tests/results/
