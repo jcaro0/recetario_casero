@@ -4,15 +4,74 @@
     CHROMIUM_PATH=/usr/bin/chromium PYTHONPATH=backend python3 tests/browser_recipes.py
 """
 import os
+import re
 import shutil
+import struct
 import tempfile
 import threading
 from pathlib import Path
 
+from flask import Response, request
 from playwright.sync_api import sync_playwright, expect
 from werkzeug.serving import make_server
 import database as db
 from main import app
+
+
+def check_pwa(browser, base, results, next_release):
+    context = browser.new_context(viewport={"width": 375, "height": 812})
+    page = context.new_page()
+    page.goto(base + "/")
+    expect(page.get_by_role("heading", name="Tu menú de esta semana")).to_be_visible()
+    page.wait_for_function("() => Boolean(navigator.serviceWorker.controller)")
+    assert page.locator('link[rel="manifest"]').get_attribute("href") == "/manifest.webmanifest"
+    manifest = page.request.get(base + "/manifest.webmanifest")
+    assert manifest.headers["content-type"].startswith("application/manifest+json")
+    config = manifest.json()
+    assert (config["name"], config["start_url"], config["scope"], config["display"]) == (
+        "Recetario", "/", "/", "standalone")
+    icons = [(icon["src"], int(icon["sizes"].split("x")[0])) for icon in config["icons"]]
+    icons.append((page.locator('link[rel="apple-touch-icon"]').get_attribute("href"), 180))
+    for path, size in icons:
+        response = page.request.get(base + path)
+        assert response.ok and response.headers["content-type"] == "image/png"
+        assert struct.unpack(">II", response.body()[16:24]) == (size, size)
+    assert page.request.get(base + "/sw.js").headers["cache-control"] == "no-cache"
+    for path in ("recetas.html", "lista_compra.html", "agregar_recetas.html", "menu.html"):
+        page.locator(f'nav a[href="{path}"]').click()
+        expect(page.locator(".nav-link.active")).to_have_attribute("href", path)
+    page.screenshot(path=str(results / "pwa-mobile.png"), full_page=True)
+
+    # Simula publicar un worker y recursos nuevos sin escribir archivos de la app.
+    next_release.set()
+    try:
+        page.evaluate("""async () => {
+            window.testRegistration = await navigator.serviceWorker.ready;
+            await window.testRegistration.update();
+        }""")
+        page.wait_for_function("() => Boolean(window.testRegistration.waiting)")
+        storage = page.evaluate("""async () => {
+            const names = await caches.keys();
+            const cached = await caches.match(location.origin + "/style/menu.css",
+                { cacheName: "recetario-shell-test-release" });
+            return { names, updated: Boolean(cached && (await cached.text()).includes("release de prueba")) };
+        }""")
+        assert storage["updated"], storage
+        page.close()
+        page = context.new_page()
+        page.goto(base + "/")
+        assert page.evaluate("""async () => {
+            for (let attempt = 0; attempt < 50; attempt++) {
+                const keys = (await caches.keys()).filter(key => key.startsWith("recetario-shell-"));
+                if (keys.length === 1 && keys[0] === "recetario-shell-test-release") return true;
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            return false;
+        }"""), "La versión nueva no se activó después de cerrar la anterior"
+    finally:
+        next_release.clear()
+        context.close()
+    print("OK: manifest, iconos, Service Worker, navegación móvil y actualización de recursos")
 
 
 def run():
@@ -24,6 +83,21 @@ def run():
         db._ready = False
         import set_up
         set_up.initialize()
+        next_release = threading.Event()
+        frontend = Path(__file__).resolve().parents[1] / "frontend"
+
+        @app.before_request
+        def serve_test_release():
+            if not next_release.is_set():
+                return
+            if request.path == "/sw.js":
+                script = (frontend / "sw.js").read_text()
+                return Response(re.sub(r"recetario-shell-v\d+", "recetario-shell-test-release", script),
+                                mimetype="application/javascript", headers={"Cache-Control": "no-cache"})
+            if request.path == "/style/menu.css":
+                style = (frontend / "style/menu.css").read_text()
+                return Response(style + "\n/* release de prueba */", mimetype="text/css")
+
         server = make_server("127.0.0.1", 0, app, threaded=True)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -34,8 +108,6 @@ def run():
                 browser = pw.chromium.launch(executable_path=chromium, headless=True)
                 page = browser.new_page(viewport={"width": 1280, "height": 900})
                 page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=base)
-                # Los recursos externos no son necesarios para comprobar la aplicación.
-                page.route("https://fonts.googleapis.com/**", lambda route: route.fulfill(status=200, body="", content_type="text/css"))
                 errors = []
                 # Chromium puede cancelar una transición CSS al navegar rápidamente.
                 page.on("pageerror", lambda error: errors.append(str(error))
@@ -345,6 +417,7 @@ def run():
                 assert not errors, errors
                 assert not network_errors, network_errors
                 assert not console_errors, console_errors
+                check_pwa(browser, base, results, next_release)
                 browser.close()
                 print("OK: formulario móvil sin desbordamiento; sin errores JavaScript")
         finally:

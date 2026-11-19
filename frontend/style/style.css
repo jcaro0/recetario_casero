@@ -1,3 +1,9 @@
+@font-face {
+    font-family: "Material Symbols Rounded";
+    src: url("../fonts/material-symbols.woff2") format("woff2");
+    font-display: block;
+}
+
 :root {
     --brown: #A9754F;
     --brown-dark: #7C5334;
