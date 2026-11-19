@@ -3,31 +3,28 @@ const searchKey = value => String(value).normalize("NFD").replace(/[\u0300-\u036
 document.addEventListener("DOMContentLoaded", () => {
     loadRecipesView();
     setupRecipeExpansion();
-    document.getElementById("catalogSearch").addEventListener("input", filterRecipes);
+    byId("catalogSearch").addEventListener("input", renderRecipes);
 });
 
 async function loadRecipesView() {
-    const list = document.getElementById("recipesContainer");
-    if (!list) return;
+    const list = byId("recipesContainer");
     list.innerHTML = "<p>Cargando recetas...</p>";
     try {
-        const recipes = await api("/recipes");
-        if (recipes.length === 0) {
+        catalogRecipes = await api("/recipes");
+        if (catalogRecipes.length === 0) {
             list.innerHTML = emptyStateHtml("No hay recetas añadidas");
             return;
         }
-        catalogRecipes = recipes;
         renderRecipes();
     } catch {
         list.innerHTML = "<p>Error al cargar las recetas.</p>";
     }
 }
 
-function filterRecipes() { renderRecipes(); }
-
 function renderRecipes() {
-    const list = document.getElementById("recipesContainer");
-    const query = searchKey(document.getElementById("catalogSearch").value.trim());
+    const list = byId("recipesContainer");
+    if (!catalogRecipes.length) return;
+    const query = searchKey(byId("catalogSearch").value.trim());
     const recipes = catalogRecipes.filter(recipe => searchKey([recipe.name, ...recipe.ingredients.map(i => i.name)].join(" ")).includes(query));
     if (!recipes.length) { list.innerHTML = "<p>No hay recetas que coincidan.</p>"; return; }
     list.innerHTML = recipes.map(recipe => `
@@ -47,7 +44,7 @@ function renderRecipes() {
                 </button>
                 <div class="ingredients-panel"><h4>Ingredientes</h4><ul>
                     ${recipe.ingredients.map(i => `
-                        <li>${escapeHtml(i.name)}${escapeHtml(formatQtyUnit(i.qty, i.unit))}</li>
+                        <li>${escapeHtml(i.name)}${escapeHtml(formatQtyUnit(i.qty, i.unit, " - "))}</li>
                     `).join("")}
                 </ul>
                 ${(recipe.preparation || []).length ? `<h4>Preparación</h4><ol>${recipe.preparation.map(step => `<li class="recipe-text">${escapeHtml(step)}</li>`).join("")}</ol>` : ""}
@@ -71,7 +68,7 @@ function setupRecipeExpansion() {
 async function deleteRecipe(id) {
     if (!confirm("¿Eliminar receta?")) return;
     try {
-        await api("/recipes/" + id, { method: "DELETE" });
+        await api(`/recipes/${id}`, "DELETE");
     } catch (e) {
         alert("No se pudo eliminar: " + e.message);
     }

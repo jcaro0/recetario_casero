@@ -129,6 +129,10 @@ body {
     margin-bottom: 30px;
 }
 
+.recipeHero {
+    background: linear-gradient(135deg, var(--brown), #C79A6C);
+}
+
 .hero h1 {
     font-size: 30px;
     margin-bottom: 8px;

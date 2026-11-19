@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/{{ page }}.css">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded" rel="stylesheet">
+</head>
+<body>
+
+<header class="topbar">
+    <div class="logo">{{ icon }} <span>{{ brand }}</span></div>
+    <nav class="top-nav">
+        {% for target, symbol, label in [
+            ("menu", "calendar_month", "Menú"),
+            ("lista_compra", "shopping_cart", "Compra"),
+            ("recetas", "menu_book", "Recetas"),
+            ("agregar_recetas", "add_circle", "Añadir")
+        ] %}
+        <a href="{{ target }}.html" class="nav-link{% if target == page %} active{% endif %}">
+            <span class="material-symbols-rounded">{{ symbol }}</span>
+            {{ label }}
+        </a>
+        {% endfor %}
+    </nav>
+    {% if can_share %}
+    <button class="icon-button" id="shareMenuButton">
+        <span class="material-symbols-rounded">share</span>
+    </button>
+    {% endif %}
+</header>
+
+{% if can_share %}
+<div class="dropdown hidden" id="shareDropdown">
+    {% for method, symbol, label in [
+        ("copy", "content_copy", "Copiar"), ("whatsapp", "chat", "WhatsApp"), ("email", "mail", "Email")
+    ] %}
+    <button data-share="{{ method }}">
+        <span class="material-symbols-rounded">{{ symbol }}</span>
+        {{ label }}
+    </button>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% block content %}{% endblock %}
+
+<script src="scripts/script.js"></script>
+<script src="scripts/{{ page }}.js"></script>
+</body>
+</html>

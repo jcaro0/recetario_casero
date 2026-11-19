@@ -1,31 +1,28 @@
-// Los días activos los decide el servidor (variable MENU_DAYS) y se piden a /days
-let DAYS = []; // [{ key: "lunes", label: "Lunes" }, ...]
-
 const MEALS = [
     { key: "comida", label: "Comida", icon: "🍽️" },
     { key: "cena", label: "Cena", icon: "🌙" }
 ];
 
 let currentEditSlot = null; // { day, meal }
-let allRecipesCache = [];
+let recipeOptions = null;
 let weeklyMenu = {};
 let weekPeople = 2;
 
 document.addEventListener("DOMContentLoaded", () => {
+    setupShareDropdown(shareMenu);
     loadWeeklyMenu();
     setupModal();
-    document.getElementById("weekPeopleForm").onsubmit = async e => {
+    byId("weekPeopleForm").onsubmit = async e => {
         e.preventDefault();
-        const input = document.getElementById("weekPeople");
+        const input = byId("weekPeople");
         if (!input.reportValidity()) return;
         const button = e.currentTarget.querySelector("button");
         button.disabled = true;
         try {
-            const result = await api("/menu/people", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({people:Number(input.value)})});
-            weekPeople = result.people;
-            document.getElementById("weekPeopleStatus").textContent = "Comensales actualizados";
+            await api("/menu/people", "POST", { people: Number(input.value) });
+            byId("weekPeopleStatus").textContent = "Comensales actualizados";
             await loadWeeklyMenu();
-        } catch (err) { document.getElementById("weekPeopleStatus").textContent = err.message; }
+        } catch (err) { byId("weekPeopleStatus").textContent = err.message; }
         finally { button.disabled = false; }
     };
     setupChooseRecipeModal();
@@ -36,25 +33,15 @@ function capitalize(text) {
     return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-function setDays(keys) {
-    DAYS = keys.map(key => ({ key, label: capitalize(key) }));
-}
-
-function mealLabel(key) {
-    const meal = MEALS.find(m => m.key === key);
-    return meal ? meal.label : key;
-}
-
 // Compartir menú semanal
 async function shareMenu(type) {
     try {
         const [days, menu] = await Promise.all([api("/days"), api("/menu")]);
-        setDays(days);
         let text = "🍽️ MENÚ SEMANAL\n\n";
-        DAYS.forEach(day => {
-            text += `${day.label}\n`;
+        days.forEach(day => {
+            text += `${capitalize(day)}\n`;
             MEALS.forEach(meal => {
-                const recipe = menu[day.key]?.[meal.key];
+                const recipe = menu[day]?.[meal.key];
                 text += `  ${meal.label}: ${recipe?.name || "Sin receta"}\n`;
             });
             text += "\n";
@@ -87,9 +74,8 @@ function slotHtml(dayKey, meal, recipe) {
 }
 
 async function loadWeeklyMenu() {
-    const grid = document.getElementById("weekGrid");
-    const generateButton = document.getElementById("generateButton");
-    if (!grid) return;
+    const grid = byId("weekGrid");
+    const generateButton = byId("generateButton");
     grid.innerHTML = "<p>Cargando menú...</p>";
     try {
         // Peticiones en paralelo: días, ¿hay recetas suficientes? y menú
@@ -98,28 +84,27 @@ async function loadWeeklyMenu() {
             api("/menu/status"),
             api("/menu"), api("/menu/people")
         ]);
-        setDays(days);
         weeklyMenu = menu;
         weekPeople = settings.people;
-        document.getElementById("weekPeople").value = weekPeople;
+        byId("weekPeople").value = weekPeople;
 
         // Un menú ya planificado sigue accesible aunque después se borren recetas.
-        if (!status.enough && !Object.values(menu).some(meals => Object.values(meals).some(r => r?.id))) {
-            if (generateButton) generateButton.style.display = "none";
+        if (!status.enough && !Object.values(menu).some(meals => Object.values(meals).some(r => r.id))) {
+            generateButton.style.display = "none";
             grid.innerHTML = emptyStateHtml("No hay suficientes recetas");
             return;
         }
-        if (generateButton) generateButton.style.display = status.enough ? "" : "none";
+        generateButton.style.display = status.enough ? "" : "none";
 
-        grid.innerHTML = DAYS.map(day => {
-            const meals = menu[day.key] || {};
+        grid.innerHTML = days.map(day => {
+            const meals = menu[day];
             return `
-                <div class="day-card" data-day="${day.key}">
+                <div class="day-card" data-day="${day}">
                     <div class="day-header">
-                        <h3>${escapeHtml(day.label)}</h3>
+                        <h3>${escapeHtml(capitalize(day))}</h3>
                         <span>🍽️</span>
                     </div>
-                    ${MEALS.map(m => slotHtml(day.key, m, meals[m.key])).join("")}
+                    ${MEALS.map(m => slotHtml(day, m, meals[m.key])).join("")}
                     <div class="day-hint">
                         <span class="material-symbols-rounded">swap_horiz</span>
                         Toca para cambiar • arrastra para mover
@@ -134,25 +119,24 @@ async function loadWeeklyMenu() {
 
 // Modal para regenerar menú
 function setupModal() {
-    const modal = document.getElementById("modal");
-    const open = document.getElementById("generateButton");
-    const cancel = document.getElementById("cancelModal");
-    const confirm = document.getElementById("confirmModal");
+    const modal = byId("modal");
+    const open = byId("generateButton");
+    const cancel = byId("cancelModal");
+    const confirm = byId("confirmModal");
 
-    const people = document.getElementById("generatePeople");
+    const people = byId("generatePeople");
     open.onclick = () => {
         people.value = weekPeople;
         modal.classList.remove("hidden");
         people.focus();
     };
-    modal.addEventListener("click", e => { if (e.target === modal) cancel.click(); });
-    document.addEventListener("keydown", e => { if (e.key === "Escape") { cancel.click(); closeChooseRecipeModal(); } });
     cancel.onclick = () => modal.classList.add("hidden");
+    dismissModalOnBackdropOrEscape("modal", cancel.onclick);
     confirm.onclick = async () => {
         if (!people.reportValidity()) return;
         confirm.disabled = true;
         try {
-            await api("/menu/generate", { method: "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({people:Number(people.value)}) });
+            await api("/menu/generate", "POST", { people: Number(people.value) });
             modal.classList.add("hidden");
         } catch (e) {
             alert("No se pudo regenerar el menú: " + e.message);
@@ -164,86 +148,62 @@ function setupModal() {
 
 // Modal selector de receta
 function setupChooseRecipeModal() {
-    const modal = document.getElementById("chooseRecipeModal");
-    const closeBtn = document.getElementById("closeChooseModal");
-    const searchInput = document.getElementById("recipeSearchInput");
-
-    closeBtn.onclick = () => closeChooseRecipeModal();
-
-    modal.addEventListener("click", (e) => {
-        if (e.target === modal) closeChooseRecipeModal();
-    });
-
-    searchInput.addEventListener("input", () => {
-        renderChooseRecipeList(searchInput.value);
-    });
+    byId("closeChooseModal").onclick = closeChooseRecipeModal;
+    dismissModalOnBackdropOrEscape("chooseRecipeModal", closeChooseRecipeModal);
+    byId("recipeSearchInput").oninput = () => renderChooseRecipeList();
+    byId("chooseRecipeList").onclick = event => {
+        const button = event.target.closest(".choose-recipe-item");
+        if (button) selectRecipeForSlot(Number(button.dataset.id));
+    };
 }
 
 async function openChooseRecipeModal(day, meal) {
-    currentEditSlot = { day, meal };
-    const modal = document.getElementById("chooseRecipeModal");
-    const dayLabel = document.getElementById("chooseRecipeDay");
-    const searchInput = document.getElementById("recipeSearchInput");
-    const list = document.getElementById("chooseRecipeList");
-    const people = document.getElementById("slotPeople");
+    const slot = { day, meal };
+    currentEditSlot = slot;
+    recipeOptions = null;
+    const modal = byId("chooseRecipeModal");
+    const dayLabel = byId("chooseRecipeDay");
+    const searchInput = byId("recipeSearchInput");
+    const list = byId("chooseRecipeList");
+    const people = byId("slotPeople");
     people.value = weeklyMenu[day]?.[meal]?.people || weekPeople;
     people.setCustomValidity("");
 
-    dayLabel.textContent = `${capitalize(day)} (${mealLabel(meal).toLowerCase()})`;
+    dayLabel.textContent = `${capitalize(day)} (${meal})`;
     searchInput.value = "";
     modal.classList.remove("hidden");
     list.innerHTML = '<p class="choose-recipe-empty">Cargando recetas...</p>';
 
     try {
-        allRecipesCache = await api("/recipes");
-        renderChooseRecipeList("");
+        const result = await api(`/recipes?meal=${meal}`);
+        if (currentEditSlot !== slot) return;
+        recipeOptions = result;
+        renderChooseRecipeList();
     } catch {
-        list.innerHTML = '<p class="choose-recipe-empty">No se pudieron cargar las recetas.</p>';
+        if (currentEditSlot === slot) list.innerHTML = '<p class="choose-recipe-empty">No se pudieron cargar las recetas.</p>';
     }
 
     searchInput.focus();
 }
 
 function closeChooseRecipeModal() {
-    document.getElementById("chooseRecipeModal").classList.add("hidden");
+    byId("chooseRecipeModal").classList.add("hidden");
     currentEditSlot = null;
 }
 
-// Una receta 'comida' no entra en una cena (y al revés); 'ambos' y 'extra' valen siempre.
-// Al cambiar a mano se puede repetir receta libremente.
-function fitsMeal(recipeType, meal) {
-    return ["ambos", "extra", meal].includes(recipeType);
-}
-
-function renderChooseRecipeList(query) {
-    const list = document.getElementById("chooseRecipeList");
-    const q = query.trim().toLowerCase();
-    const meal = currentEditSlot?.meal;
-
-    if (allRecipesCache.length === 0) {
-        list.innerHTML = `
-            <p class="choose-recipe-empty">
-                Todavía no tienes recetas guardadas.<br>Añade alguna primero.
-            </p>
-        `;
-        return;
-    }
-
-    const compatible = allRecipesCache.filter(r => fitsMeal(r.type, meal));
-
-    if (compatible.length === 0) {
-        list.innerHTML = `
-            <p class="choose-recipe-empty">
-                No tienes recetas válidas para la ${escapeHtml(mealLabel(meal).toLowerCase())}.
-            </p>
-        `;
-        return;
-    }
-
-    const filtered = compatible.filter(r => r.name.toLowerCase().includes(q));
-
-    if (filtered.length === 0) {
-        list.innerHTML = '<p class="choose-recipe-empty">No hay recetas que coincidan.</p>';
+function renderChooseRecipeList() {
+    if (!recipeOptions) return;
+    const list = byId("chooseRecipeList");
+    const query = byId("recipeSearchInput").value.trim().toLowerCase();
+    const { recipes, has_recipes } = recipeOptions;
+    const filtered = recipes.filter(recipe => recipe.name.toLowerCase().includes(query));
+    if (!filtered.length) {
+        const message = !has_recipes
+            ? "Todavía no tienes recetas guardadas.<br>Añade alguna primero."
+            : recipes.length
+                ? "No hay recetas que coincidan."
+                : `No tienes recetas válidas para la ${currentEditSlot.meal}.`;
+        list.innerHTML = `<p class="choose-recipe-empty">${message}</p>`;
         return;
     }
 
@@ -254,22 +214,15 @@ function renderChooseRecipeList(query) {
         </button>
     `).join("");
 
-    list.querySelectorAll(".choose-recipe-item").forEach(btn => {
-        btn.onclick = () => selectRecipeForSlot(Number(btn.dataset.id));
-    });
 }
 
 async function selectRecipeForSlot(recipeId) {
     if (!currentEditSlot) return;
     const { day, meal } = currentEditSlot;
-    const input = document.getElementById("slotPeople");
+    const input = byId("slotPeople");
     if (!input.reportValidity()) return;
     try {
-        await api(`/menu/${encodeURIComponent(day)}/${encodeURIComponent(meal)}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ recipe_id: recipeId, people: input.value ? Number(input.value) : null })
-        });
+        await saveMenuSlot(day, meal, recipeId, input.value ? Number(input.value) : null);
     } catch (e) {
         alert(e.message);
     }
@@ -279,8 +232,7 @@ async function selectRecipeForSlot(recipeId) {
 
 // Click y drag & drop sobre cada hueco (comida / cena)
 function setupWeekGridEvents() {
-    const grid = document.getElementById("weekGrid");
-    if (!grid) return;
+    const grid = byId("weekGrid");
 
     grid.addEventListener("click", async (e) => {
         if (e.target.closest(".slot-people")) {
@@ -342,13 +294,9 @@ function setupWeekGridEvents() {
         if (fromDay === toDay && fromMeal === toMeal) return;
 
         try {
-            await api("/menu/swap", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    day1: fromDay, meal1: fromMeal,
-                    day2: toDay, meal2: toMeal
-                })
+            await api("/menu/swap", "POST", {
+                day1: fromDay, meal1: fromMeal,
+                day2: toDay, meal2: toMeal
             });
         } catch (err) {
             alert(err.message);
@@ -362,10 +310,11 @@ async function updateSlotPeople(slot, people) {
     const input = slot.querySelector("input");
     input.disabled = true;
     try {
-        await api(`/menu/${encodeURIComponent(day)}/${meal}`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ recipe_id: weeklyMenu[day][meal].id, people })
-        });
+        await saveMenuSlot(day, meal, weeklyMenu[day][meal].id, people);
     } catch (err) { alert("No se pudieron guardar los comensales: " + err.message); }
     await loadWeeklyMenu();
+}
+
+function saveMenuSlot(day, meal, recipeId, people) {
+    return api(`/menu/${encodeURIComponent(day)}/${meal}`, "POST", { recipe_id: recipeId, people });
 }

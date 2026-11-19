@@ -1,56 +1,9 @@
-<!DOCTYPE html>
-<html lang="es">
+{% extends "layout.html" %}
+{% set title = "Añadir receta" %}
+{% set brand = "Nueva receta" %}
+{% set icon = "📖" %}
 
-<head>
-
-    <meta charset="UTF-8">
-
-    <meta name="viewport"
-    content="width=device-width, initial-scale=1.0">
-
-    <title>Añadir receta</title>
-
-    <link rel="stylesheet" href="style/style.css">
-    <link rel="stylesheet" href="style/agregar_recetas.css">
-
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded" rel="stylesheet">
-
-</head>
-
-<body>
-
-<header class="topbar">
-
-    <div class="logo">
-        📖 <span>Nueva receta</span>
-    </div>
-
-    <nav class="top-nav">
-
-        <a href="menu.html" class="nav-link">
-            <span class="material-symbols-rounded">calendar_month</span>
-            Menú
-        </a>
-
-        <a href="lista_compra.html" class="nav-link">
-            <span class="material-symbols-rounded">shopping_cart</span>
-            Compra
-        </a>
-
-        <a href="recetas.html" class="nav-link">
-            <span class="material-symbols-rounded">menu_book</span>
-            Recetas
-        </a>
-
-        <a href="agregar_recetas.html" class="nav-link active">
-            <span class="material-symbols-rounded">add_circle</span>
-            Añadir
-        </a>
-
-    </nav>
-
-</header>
-
+{% block content %}
 <main class="container">
 
 <section class="hero recipeHero">
@@ -172,8 +125,4 @@
     </div>
 
 </div>
-
-<script src="scripts/script.js"></script>
-<script src="scripts/agregar_recetas.js"></script>
-</body>
-</html>
+{% endblock %}

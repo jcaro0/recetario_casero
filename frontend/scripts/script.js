@@ -1,6 +1,4 @@
-// =======================================================
-// UTILIDADES GLOBALES Y TRANSICIONES
-// =======================================================
+const byId = id => document.getElementById(id);
 
 // Evita saltos de scroll al navegar con View Transitions
 document.addEventListener("click", (e) => {
@@ -18,23 +16,32 @@ document.addEventListener("click", (e) => {
 });
 
 // Dropdown de compartir en la cabecera
-function setupShareDropdown() {
-    const button = document.getElementById("shareMenuButton");
-    const dropdown = document.getElementById("shareDropdown");
-    if (!button || !dropdown) return;
-
-    button.onclick = () => {
-        dropdown.classList.toggle("hidden");
+function setupShareDropdown(share) {
+    const button = byId("shareMenuButton");
+    const dropdown = byId("shareDropdown");
+    button.onclick = () => dropdown.classList.toggle("hidden");
+    dropdown.onclick = event => {
+        const option = event.target.closest("[data-share]");
+        if (option) share(option.dataset.share);
     };
-
-    document.addEventListener("click", (e) => {
-        if (!dropdown.contains(e.target) && !button.contains(e.target)) {
+    document.addEventListener("click", event => {
+        if (!dropdown.contains(event.target) && !button.contains(event.target)) {
             dropdown.classList.add("hidden");
         }
     });
 }
 
-function shareText(text, type, subject = "Menú Semanal") {
+function dismissModalOnBackdropOrEscape(id, close) {
+    const modal = byId(id);
+    modal.addEventListener("click", event => {
+        if (event.target === modal) close();
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !modal.classList.contains("hidden")) close();
+    });
+}
+
+function shareText(text, type, subject) {
     switch (type) {
         case "copy":
             navigator.clipboard.writeText(text);
@@ -51,9 +58,9 @@ function shareText(text, type, subject = "Menú Semanal") {
 }
 
 // Formateador común para ingredientes
-function formatQtyUnit(qty, unit) {
+function formatQtyUnit(qty, unit, prefix = "") {
     if (qty === null || qty === undefined || qty === "") return "";
-    return ` - ${qty}${unit ? " " + unit : ""}`;
+    return `${prefix}${qty}${unit ? " " + unit : ""}`;
 }
 
 // Escapa texto antes de meterlo en innerHTML (evita inyectar HTML desde nombres de recetas)
@@ -67,17 +74,15 @@ function escapeHtml(value) {
 }
 
 // fetch + JSON que lanza un Error con el mensaje del servidor si la respuesta no es OK
-async function api(url, options) {
+async function api(url, method = "GET", body) {
+    const options = { method };
+    if (body !== undefined) {
+        options.headers = { "Content-Type": "application/json" };
+        options.body = JSON.stringify(body);
+    }
     const res = await fetch(url, options);
-    let data = null;
-    try {
-        data = await res.json();
-    } catch {
-        // respuesta sin cuerpo JSON
-    }
-    if (!res.ok) {
-        throw new Error((data && data.error) || "Error del servidor");
-    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || "Error del servidor");
     return data;
 }
 
@@ -106,8 +111,3 @@ function emptyStateHtml(message) {
         </div>
     `;
 }
-
-// Inicialización de elementos comunes
-document.addEventListener("DOMContentLoaded", () => {
-    setupShareDropdown();
-});

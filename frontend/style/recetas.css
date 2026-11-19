@@ -1,7 +1,3 @@
-.recipeHero {
-    background: linear-gradient(135deg, var(--brown), #C79A6C);
-}
-
 .recipe-grid {
     display: flex;
     flex-direction: column;
@@ -26,12 +22,7 @@
     display: flex;
     align-items: center;
     gap: 14px;
-    padding-right: 44px;
-}
-
-.recipe-icon {
-    font-size: 32px;
-    flex-shrink: 0;
+    padding-right: 110px;
 }
 
 .recipe-card-header h3 {
@@ -79,7 +70,6 @@
         gap: 20px;
     }
 }
-.recipe-card-header { padding-right: 110px; }
 .editRecipe {
     position: absolute;
     top: 22px;

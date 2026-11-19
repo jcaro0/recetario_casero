@@ -62,10 +62,6 @@
     text-transform: uppercase;
 }
 
-.meal-slot .food {
-    font-size: 16px;
-}
-
 .day-hint {
     display: flex;
     align-items: center;
@@ -90,7 +86,7 @@
 }
 
 .food {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
 }
 

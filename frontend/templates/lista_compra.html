@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+{% set title = "Lista Compra" %}
+{% set brand = "Cesto de la compra" %}
+{% set icon = "🛒" %}
+{% set can_share = true %}
+
+{% block content %}
+<main class="container">
+
+    <section class="hero shoppingHero">
+
+        <h1>Lista de compra semanal</h1>
+
+        <p>
+            Todos los ingredientes del menú de la semana agrupados automáticamente.
+        </p>
+
+    </section>
+
+    <section id="shoppingList" class="shopping-list">
+
+    </section>
+
+</main>
+{% endblock %}

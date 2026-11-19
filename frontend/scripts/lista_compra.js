@@ -2,25 +2,14 @@ let shoppingSaving = false;
 let shoppingItems = []; // lista actual (para saber qué ingrediente es cada casilla)
 
 document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("shoppingList")
+    byId("shoppingList")
         .addEventListener("change", onToggleItem);
+    setupShareDropdown(shareShopping);
     loadShoppingList();
 });
 
-// "1.5 uds", "200 g" o "" si el ingrediente no tiene cantidad
-function shoppingQuantity(item) {
-    return formatQtyUnit(item.qty, item.unit).replace(/^\s*-\s*/, "");
-}
-
-// ¿Hay alguna receta puesta en el menú?
-function menuHasRecipes(menu) {
-    return Object.values(menu).some(meals =>
-        Object.values(meals).some(slot => slot && slot.name)
-    );
-}
-
 async function loadShoppingList() {
-    const container = document.getElementById("shoppingList");
+    const container = byId("shoppingList");
     container.innerHTML = "<p>Cargando...</p>";
     try {
         const [menu, shopping] = await Promise.all([
@@ -28,7 +17,7 @@ async function loadShoppingList() {
             api("/shopping-list")
         ]);
 
-        if (!menuHasRecipes(menu)) {
+        if (!Object.values(menu).some(meals => Object.values(meals).some(slot => slot.name))) {
             shoppingItems = [];
             container.innerHTML = emptyStateHtml("No hay menú semanal");
             return;
@@ -47,12 +36,12 @@ async function loadShoppingList() {
 }
 
 function renderShoppingList() {
-    const container = document.getElementById("shoppingList");
+    const container = byId("shoppingList");
     const row = (item, index) => `
         <label class="shopping-item${item.checked ? " checked" : ""}">
             <input type="checkbox" data-index="${index}"${item.checked ? " checked" : ""}>
             <div class="shopping-info"><strong>${escapeHtml(item.name)}</strong>
-            <span>${escapeHtml(shoppingQuantity(item))}</span></div>
+            <span>${escapeHtml(formatQtyUnit(item.qty, item.unit))}</span></div>
         </label>`;
     const group = checked => shoppingItems.map((item, index) => item.checked === checked ? row(item, index) : "").join("");
     container.innerHTML = group(false) + (shoppingItems.some(i => i.checked) ?
@@ -74,17 +63,12 @@ async function onToggleItem(e) {
     row.classList.toggle("checked", checked);
 
     try {
-        await api("/shopping-list/check", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: item.name, unit: item.unit, checked })
-        });
+        await api("/shopping-list/check", "POST", { name: item.name, unit: item.unit, checked });
         shoppingItems.forEach(i => { if (i.name === item.name && i.unit === item.unit) i.checked = checked; });
         // Reordena al terminar la petición y después del gesto sobre la casilla.
         renderShoppingList();
     } catch (err) {
         // Si no se pudo guardar, la casilla vuelve a como estaba
-        box.disabled = false;
         box.checked = !checked;
         row.classList.toggle("checked", !checked);
         alert("No se pudo guardar: " + err.message);
@@ -104,7 +88,7 @@ async function shareShopping(type) {
         }
         let text = "🛒 LISTA DE LA COMPRA\n\n";
         shopping.forEach(item => {
-            const qty = shoppingQuantity(item);
+            const qty = formatQtyUnit(item.qty, item.unit);
             const mark = item.checked ? "✅" : "•";
             text += qty ? `${mark} ${item.name} (${qty})\n` : `${mark} ${item.name}\n`;
         });

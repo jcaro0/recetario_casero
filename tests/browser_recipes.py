@@ -33,6 +33,7 @@ def run():
                 chromium = os.environ.get("CHROMIUM_PATH") or shutil.which("chromium") or shutil.which("chromium-browser")
                 browser = pw.chromium.launch(executable_path=chromium, headless=True)
                 page = browser.new_page(viewport={"width": 1280, "height": 900})
+                page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=base)
                 # Los recursos externos no son necesarios para comprobar la aplicación.
                 page.route("https://fonts.googleapis.com/**", lambda route: route.fulfill(status=200, body="", content_type="text/css"))
                 errors = []
@@ -73,6 +74,17 @@ def run():
                 plain = page.request.get(base + "/recipes").json()[0]
                 assert plain["preparation"] == []
                 print("OK: Enter recorre nombre/raciones/ingrediente/cantidad/unidad sin guardar; creación sin pasos")
+
+                page.locator("#recipeName").fill("Arroz repetido")
+                names.first.fill("Arroz")
+                page.locator(".submitButton").click()
+                expect(page.locator("#duplicateModal")).to_be_visible()
+                page.keyboard.press("Escape")
+                expect(page.locator("#duplicateModal")).to_be_hidden()
+                assert len(page.request.get(base + "/recipes").json()) == 1
+                page.reload()
+                expect(page.locator("#recipeName")).to_be_enabled()
+                print("OK: la detección de duplicados se puede cancelar con Escape sin guardar")
 
                 page.locator("#recipeName").fill("Lentejas completas")
                 names.first.fill("lentejas")
@@ -219,7 +231,29 @@ def run():
                 page.screenshot(path=str(results / "menu-desktop.png"), full_page=True)
                 print("OK: regeneración con confirmación/cancelación, comensales semanales, cambio masivo sin cambiar recetas e individual persistente")
 
-                page.goto(base + "/lista_compra.html")
+                monday = page.locator(f'.day-card[data-day="{db.DAYS[0]}"]')
+                monday.evaluate('card => card.scrollIntoView({block: "center", behavior: "instant"})')
+                slots = monday.locator(".meal-slot")
+                first, second = [slots.nth(index).locator(".food").inner_text() for index in range(2)]
+                source, target = [slots.nth(index).locator(".meal-label").bounding_box() for index in range(2)]
+                with page.expect_response(lambda response: response.url.endswith("/menu/swap")) as swap:
+                    page.mouse.move(source["x"] + 10, source["y"] + source["height"] / 2)
+                    page.mouse.down()
+                    page.mouse.move(target["x"] + 10, target["y"] + target["height"] / 2, steps=12)
+                    page.mouse.up()
+                assert swap.value.ok
+                assert swap.value.request.post_data_json == {
+                    "day1": db.DAYS[0], "meal1": "comida", "day2": db.DAYS[0], "meal2": "cena",
+                }, swap.value.request.post_data
+                expect(slots.nth(0).locator(".food")).to_have_text(second)
+                expect(slots.nth(1).locator(".food")).to_have_text(first)
+                expect(slots.nth(1).locator("input")).to_have_value("7")
+
+                page.locator("#shareMenuButton").click()
+                page.once("dialog", lambda dialog: dialog.accept())
+                page.locator('[data-share="copy"]').click()
+                page.wait_for_function('async () => (await navigator.clipboard.readText()).includes("MENÚ SEMANAL")')
+                page.locator('nav a[href="lista_compra.html"]').click()
                 tomato = page.locator(".shopping-item").filter(has=page.locator("strong", has_text="Tomate"))
                 expect(tomato).to_have_count(1)
                 # La suma y el escalado coinciden con el cálculo independiente del menú.
@@ -240,6 +274,10 @@ def run():
                 tomato.locator("input").check()
                 expect(page.locator(".purchased-divider")).to_be_visible()
                 page.screenshot(path=str(results / "shopping-desktop.png"), full_page=True)
+                page.locator("#shareMenuButton").click()
+                page.once("dialog", lambda dialog: dialog.accept())
+                page.locator('[data-share="copy"]').click()
+                page.wait_for_function('async () => (await navigator.clipboard.readText()).includes("✅ Tomate")')
                 # Todos comprados y vuelta a pendientes.
                 while page.locator('.shopping-item:not(.checked) input').count():
                     page.locator('.shopping-item:not(.checked) input').first.check()
@@ -249,6 +287,7 @@ def run():
                 page.locator('.shopping-item input').first.uncheck()
                 expect(page.locator('.shopping-item:not(.checked)')).to_have_count(1)
                 print("OK: suma de tomates con escalado, comprados al final, separador, desmarcado y persistencia")
+                print("OK: intercambio al arrastrar, navegación y copia al portapapeles de menú y compra")
 
                 page.set_viewport_size({"width": 375, "height": 812})
                 page.goto(base + f'/agregar_recetas.html?id={rich["id"]}')

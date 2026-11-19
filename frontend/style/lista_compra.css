@@ -9,6 +9,7 @@
 }
 
 .shopping-item {
+    overflow-anchor: none;
     display: flex;
     align-items: center;
     gap: 16px;
@@ -47,4 +48,3 @@
     font-size: 14px;
 }
 .purchased-divider { border-top:1px solid #d7c6b3; padding-top:18px; margin:24px 0 12px; color:var(--muted); font-size:1rem; }
-.shopping-item { overflow-anchor:none; }

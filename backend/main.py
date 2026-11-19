@@ -1,13 +1,13 @@
 import os
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 import database as db
 from normalize import clean_quantity, collapse_spaces
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_FOLDER = os.environ.get("FRONTEND_FOLDER", os.path.join(BASE_DIR, "..", "frontend"))
-app = Flask(__name__, static_folder=FRONTEND_FOLDER, static_url_path="")
+app = Flask(__name__, static_folder=None, template_folder=os.path.join(FRONTEND_FOLDER, "templates"))
 
 
 @app.before_request
@@ -47,7 +47,17 @@ def validate_slots(*slots):
 
 @app.get("/")
 def serve_index():
-    return app.send_static_file("menu.html")
+    return serve_page("menu.html")
+
+
+@app.get("/<any(menu.html,recetas.html,agregar_recetas.html,lista_compra.html):page>")
+def serve_page(page):
+    return render_template(page, page=page.removesuffix(".html"))
+
+
+@app.get("/<any(style,scripts,img):directory>/<path:filename>")
+def serve_asset(directory, filename):
+    return send_from_directory(os.path.join(FRONTEND_FOLDER, directory), filename)
 
 
 @app.get("/days")

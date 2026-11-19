@@ -1,76 +1,10 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Menú Semanal</title>
+{% extends "layout.html" %}
+{% set title = "Mi Menú Semanal" %}
+{% set brand = "Menú Semanal" %}
+{% set icon = "🍽️" %}
+{% set can_share = true %}
 
-    <link rel="stylesheet" href="style/style.css">
-    <link rel="stylesheet" href="style/menu.css">
-
-    <!-- Iconos Material Symbols -->
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded" rel="stylesheet">
-</head>
-<body>
-
-<header class="topbar">
-
-    <div class="logo">
-        🍽️ <span>Menú Semanal</span>
-    </div>
-
-    <nav class="top-nav">
-
-        <a href="menu.html" class="nav-link active">
-            <span class="material-symbols-rounded">calendar_month</span>
-            Menú
-        </a>
-
-        <a href="lista_compra.html" class="nav-link">
-            <span class="material-symbols-rounded">shopping_cart</span>
-            Compra
-        </a>
-
-        <a href="recetas.html" class="nav-link">
-            <span class="material-symbols-rounded">menu_book</span>
-            Recetas
-        </a>
-
-        <a href="agregar_recetas.html" class="nav-link">
-            <span class="material-symbols-rounded">add_circle</span>
-            Añadir
-        </a>
-
-    </nav>
-
-    <button class="icon-button" id="shareMenuButton">
-        <span class="material-symbols-rounded">share</span>
-    </button>
-
-</header>
-
-<!-- Dropdown compartir -->
-
-<div class="dropdown hidden" id="shareDropdown">
-
-    <button onclick="shareMenu('copy')">
-        <span class="material-symbols-rounded">content_copy</span>
-        Copiar
-    </button>
-
-    <button onclick="shareMenu('whatsapp')">
-        <span class="material-symbols-rounded">chat</span>
-        WhatsApp
-    </button>
-
-    <button onclick="shareMenu('email')">
-        <span class="material-symbols-rounded">mail</span>
-        Email
-    </button>
-
-</div>
-
-
+{% block content %}
 <main class="container">
 
     <section class="hero">
@@ -154,7 +88,6 @@
 
         <label for="generatePeople">¿Para cuántas personas?</label>
         <input id="generatePeople" type="number" min="1" max="2147483647" step="1" required value="2">
-        <p id="generateStatus" role="status"></p>
         <div class="modal-buttons">
 
             <button class="secondary" id="cancelModal">
@@ -170,9 +103,4 @@
     </div>
 
 </div>
-
-<script src="scripts/script.js"></script>
-<script src="scripts/menu.js"></script>
-
-</body>
-</html>
+{% endblock %}
