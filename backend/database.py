@@ -229,9 +229,8 @@ def _menu_shortages(pools):
     return {meal: max(0, len(DAYS) - len(pools[meal])) for meal in MEALS}
 
 
-def menu_status():
-    with connection() as conn:
-        pools = _menu_pools(conn)
+def _menu_status(conn):
+    pools = _menu_pools(conn)
     return {
         "enough": sum(_menu_shortages(pools).values()) <= len(pools["ambos"]),
         "days": len(DAYS),
@@ -239,16 +238,24 @@ def menu_status():
     }
 
 
-def get_menu():
-    menu = {day: dict.fromkeys(MEALS) for day in DAYS}
+def menu_status():
     with connection() as conn:
-        conn.execute("BEGIN")  # Usa la misma vista de SQLite para el menú y sus recetas.
-        recipes = _load_recipes(conn)
-        for row in conn.execute("SELECT day, meal, recipe_id, people FROM menu"):
-            recipe = recipes.get(row["recipe_id"])
-            if row["day"] in menu and recipe:
-                menu[row["day"]][row["meal"]] = dict(recipe, people=row["people"])
+        return _menu_status(conn)
+
+
+def _read_menu(conn, recipes):
+    menu = {day: dict.fromkeys(MEALS) for day in DAYS}
+    for row in conn.execute("SELECT day, meal, recipe_id, people FROM menu"):
+        recipe = recipes.get(row["recipe_id"])
+        if row["day"] in menu and recipe:
+            menu[row["day"]][row["meal"]] = dict(recipe, people=row["people"])
     return menu
+
+
+def get_menu():
+    with connection() as conn:
+        conn.execute("BEGIN")
+        return _read_menu(conn, _load_recipes(conn))
 
 
 def set_menu_slot(day, meal, recipe_id, people=None):
@@ -281,10 +288,14 @@ def generate_menu(people):
         _save_week_people(conn, people)
 
 
+def _read_week_people(conn):
+    row = conn.execute("SELECT value FROM settings WHERE key='week_people'").fetchone()
+    return int(row[0]) if row else 2
+
+
 def get_week_people():
     with connection() as conn:
-        row = conn.execute("SELECT value FROM settings WHERE key='week_people'").fetchone()
-    return int(row[0]) if row else 2
+        return _read_week_people(conn)
 
 
 def _save_week_people(conn, people):
@@ -322,25 +333,39 @@ def swap_menu_slots(day1, meal1, day2, meal2):
 
 # Compra
 
-def get_shopping_list():
+def _read_shopping(conn):
     marks = ", ".join("?" for _ in DAYS)
+    rows = conn.execute(
+        "SELECT i.name, i.qty, i.unit, m.people, r.servings "
+        "FROM menu m JOIN recipes r ON r.id = m.recipe_id "
+        "JOIN ingredients i ON i.recipe_id = m.recipe_id "
+        f"WHERE m.day IN ({marks})",
+        DAYS,
+    ).fetchall()
+    checked = {shopping_key(row["name"], row["unit"]) for row in
+               conn.execute("SELECT name, unit FROM shopping_checked")}
+    manual = [
+        dict(manual_id=row["id"], name=row["name"], qty=display_quantity(row["qty"]),
+             unit=row["unit"], checked=bool(row["checked"]))
+        for row in conn.execute("SELECT * FROM manual_products ORDER BY name COLLATE NOCASE, id")
+    ]
+    return group_shopping(rows, checked) + manual
+
+
+def get_shopping_list():
     with connection() as conn:
         conn.execute("BEGIN")
-        rows = conn.execute(
-            "SELECT i.name, i.qty, i.unit, m.people, r.servings "
-            "FROM menu m JOIN recipes r ON r.id = m.recipe_id "
-            "JOIN ingredients i ON i.recipe_id = m.recipe_id "
-            f"WHERE m.day IN ({marks})",
-            DAYS,
-        ).fetchall()
-        checked = {shopping_key(row["name"], row["unit"]) for row in
-                   conn.execute("SELECT name, unit FROM shopping_checked")}
-        manual = [
-            dict(manual_id=row["id"], name=row["name"], qty=display_quantity(row["qty"]),
-                 unit=row["unit"], checked=bool(row["checked"]))
-            for row in conn.execute("SELECT * FROM manual_products ORDER BY name COLLATE NOCASE, id")
-        ]
-    return group_shopping(rows, checked) + manual
+        return _read_shopping(conn)
+
+
+def read_snapshot():
+    """Un juego de datos coherente desde una sola lectura de SQLite."""
+    with connection() as conn:
+        conn.execute("BEGIN")
+        recipes = _load_recipes(conn)
+        return dict(recipes=list(recipes.values()), menu=_read_menu(conn, recipes),
+                    shopping=_read_shopping(conn), days=DAYS, people=_read_week_people(conn),
+                    status=_menu_status(conn))
 
 
 def set_shopping_checked(name, unit, checked):
