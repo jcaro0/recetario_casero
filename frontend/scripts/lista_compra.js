@@ -1,9 +1,12 @@
 let shoppingSaving = false;
 let shoppingItems = []; // lista actual (para saber qué ingrediente es cada casilla)
+let editingProduct = null;
 
 document.addEventListener("DOMContentLoaded", () => {
-    byId("shoppingList")
-        .addEventListener("change", onToggleItem);
+    byId("shoppingList").addEventListener("change", onToggleItem);
+    byId("shoppingList").addEventListener("click", onProductAction);
+    byId("manualForm").addEventListener("submit", saveManualProduct);
+    byId("manualCancel").onclick = resetManualForm;
     setupShareDropdown(shareShopping);
     loadShoppingList();
 });
@@ -17,14 +20,11 @@ async function loadShoppingList() {
             api("/shopping-list")
         ]);
 
-        if (!Object.values(menu).some(meals => Object.values(meals).some(slot => slot.name))) {
-            shoppingItems = [];
-            container.innerHTML = emptyStateHtml("No hay menú semanal");
-            return;
-        }
         if (shopping.length === 0) {
             shoppingItems = [];
-            container.innerHTML = "<p>No hay nada en la lista todavía.</p>";
+            const hasMenu = Object.values(menu).some(meals => Object.values(meals).some(slot => slot.name));
+            container.innerHTML = hasMenu ? "<p>No hay nada en la lista todavía.</p>" :
+                emptyStateHtml("No hay menú semanal");
             return;
         }
 
@@ -35,17 +35,77 @@ async function loadShoppingList() {
     }
 }
 
+function shoppingAmount(item) {
+    return formatQtyUnit(item.qty, item.unit) || (item.manual_id ? item.unit || "" : "");
+}
+
 function renderShoppingList() {
     const container = byId("shoppingList");
     const row = (item, index) => `
-        <label class="shopping-item${item.checked ? " checked" : ""}">
-            <input type="checkbox" data-index="${index}"${item.checked ? " checked" : ""}>
-            <div class="shopping-info"><strong>${escapeHtml(item.name)}</strong>
-            <span>${escapeHtml(formatQtyUnit(item.qty, item.unit))}</span></div>
-        </label>`;
+        <div class="shopping-item${item.checked ? " checked" : ""}" data-index="${index}">
+            <label class="shopping-details">
+                <input type="checkbox"${item.checked ? " checked" : ""}>
+                <span class="shopping-info"><strong>${escapeHtml(item.name)}</strong>
+                <span>${escapeHtml(shoppingAmount(item))}</span></span>
+            </label>
+            ${item.manual_id ? `<div class="manual-actions">
+                <button type="button" data-action="edit" aria-label="Editar ${escapeHtml(item.name)}">Editar</button>
+                <button type="button" data-action="delete" aria-label="Eliminar ${escapeHtml(item.name)}">Eliminar</button>
+            </div>` : ""}
+        </div>`;
     const group = checked => shoppingItems.map((item, index) => item.checked === checked ? row(item, index) : "").join("");
     container.innerHTML = group(false) + (shoppingItems.some(i => i.checked) ?
         '<h2 class="purchased-divider">Ya comprados</h2>' + group(true) : "");
+}
+
+function resetManualForm() {
+    editingProduct = null;
+    byId("manualForm").reset();
+    byId("manualSubmit").textContent = "Añadir producto";
+    byId("manualCancel").classList.add("hidden");
+    byId("manualStatus").textContent = "";
+}
+
+async function saveManualProduct(event) {
+    event.preventDefault();
+    const button = byId("manualSubmit");
+    const data = Object.fromEntries(new FormData(event.currentTarget));
+    button.disabled = true;
+    try {
+        const url = "/shopping-list/manual";
+        if (editingProduct === null) await api(url, "POST", data);
+        else await api(`${url}/${editingProduct}`, "PUT", data);
+        resetManualForm();
+        await loadShoppingList();
+    } catch (error) {
+        byId("manualStatus").textContent = error.message;
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function onProductAction(event) {
+    const button = event.target.closest("[data-action]");
+    if (!button) return;
+    const item = shoppingItems[Number(button.closest(".shopping-item").dataset.index)];
+    if (button.dataset.action === "edit") {
+        editingProduct = item.manual_id;
+        const fields = byId("manualForm").elements;
+        fields.namedItem("name").value = item.name;
+        fields.qty.value = item.qty ?? "";
+        fields.unit.value = item.unit ?? "";
+        byId("manualSubmit").textContent = "Guardar producto";
+        byId("manualCancel").classList.remove("hidden");
+        fields.namedItem("name").focus();
+    } else if (confirm(`¿Eliminar «${item.name}»?`)) {
+        try {
+            await api(`/shopping-list/manual/${item.manual_id}`, "DELETE");
+            if (editingProduct === item.manual_id) resetManualForm();
+            await loadShoppingList();
+        } catch (error) {
+            byId("manualStatus").textContent = error.message;
+        }
+    }
 }
 
 // Marcar / desmarcar un ingrediente: se guarda en la base de datos
@@ -53,24 +113,27 @@ async function onToggleItem(e) {
     const box = e.target.closest('input[type="checkbox"]');
     if (!box || shoppingSaving) return;
 
-    const item = shoppingItems[Number(box.dataset.index)];
+    const row = box.closest(".shopping-item");
+    const item = shoppingItems[Number(row.dataset.index)];
     if (!item) return;
 
-    const row = box.closest(".shopping-item");
     const checked = box.checked;
     shoppingSaving = true;
     document.querySelectorAll(".shopping-item input").forEach(input => input.disabled = true);
-    row.classList.toggle("checked", checked);
-
     try {
-        await api("/shopping-list/check", "POST", { name: item.name, unit: item.unit, checked });
-        shoppingItems.forEach(i => { if (i.name === item.name && i.unit === item.unit) i.checked = checked; });
+        if (item.manual_id) {
+            await api(`/shopping-list/manual/${item.manual_id}`, "PATCH", { checked });
+            item.checked = checked;
+        } else {
+            await api("/shopping-list/check", "POST", { name: item.name, unit: item.unit, checked });
+            shoppingItems.forEach(i => {
+                if (!i.manual_id && i.name === item.name && i.unit === item.unit) i.checked = checked;
+            });
+        }
         // Reordena al terminar la petición y después del gesto sobre la casilla.
         renderShoppingList();
     } catch (err) {
-        // Si no se pudo guardar, la casilla vuelve a como estaba
-        box.checked = !checked;
-        row.classList.toggle("checked", !checked);
+        box.checked = item.checked;
         alert("No se pudo guardar: " + err.message);
     } finally {
         shoppingSaving = false;
@@ -88,7 +151,7 @@ async function shareShopping(type) {
         }
         let text = "🛒 LISTA DE LA COMPRA\n\n";
         shopping.forEach(item => {
-            const qty = formatQtyUnit(item.qty, item.unit);
+            const qty = shoppingAmount(item);
             const mark = item.checked ? "✅" : "•";
             text += qty ? `${mark} ${item.name} (${qty})\n` : `${mark} ${item.name}\n`;
         });

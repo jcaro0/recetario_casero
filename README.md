@@ -120,7 +120,7 @@ host sigue siendo la fuente de verdad. No borres ese directorio ni sus auxiliare
    ./despliegue_docker.sh
    ```
 
-   La base existente del ordenador necesita la migración explícita a la versión 5.
+   La base existente del ordenador necesita la migración explícita al esquema actual (6).
    `migrate` crea además su propia copia previa verificada. Si falla, no arranques
    hasta resolver la causa. No sustituyas los datos para forzar el arranque.
 
@@ -496,3 +496,17 @@ No se necesitan dependencias adicionales de producción. Elimina las antiguas
 variables de configuración de acceso si aún están en tu archivo de entorno.
 
 Las pruebas de desarrollo y evidencias se describen en `tests/README.md`.
+
+
+## Productos manuales en la compra
+
+En **Compra**, escribe un nombre y, si hace falta, una cantidad o unidad. Puedes
+editar el producto desde su fila, borrarlo o marcarlo como comprado. Se comparte
+junto con los ingredientes del menú. Las filas manuales conservan su contenido y
+sus marcas aunque regeneres el menú, incluso si coinciden por nombre con un
+ingrediente calculado.
+
+El esquema **6** añade únicamente la tabla `manual_products`. Si tu base usa
+una versión anterior, detén el servicio y ejecuta `manage.py migrate` en esa
+instalación según los pasos de Docker o Raspberry de este documento. El comando
+crea y verifica primero una copia en `BACKUP_DIR`. No uses `init` en una base existente.

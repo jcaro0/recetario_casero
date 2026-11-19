@@ -51,13 +51,14 @@ MEALS = ["comida", "cena"]
 RECIPE_TYPES = ["ambos", "comida", "cena", "extra"]
 
 # Versión del esquema (PRAGMA user_version). La define el esquema, no set_up.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 SCHEMA_COLUMNS = {
     "recipes": {"id", "name", "type", "servings", "preparation", "notes"},
     "ingredients": {"id", "recipe_id", "position", "name", "qty", "unit"},
     "menu": {"day", "meal", "recipe_id", "people"},
     "shopping_checked": {"name", "unit"},
     "settings": {"key", "value"},
+    "manual_products": {"id", "name", "qty", "unit", "checked"},
 }
 
 _init_lock = threading.Lock()
@@ -334,7 +335,12 @@ def get_shopping_list():
         ).fetchall()
         checked = {shopping_key(row["name"], row["unit"]) for row in
                    conn.execute("SELECT name, unit FROM shopping_checked")}
-    return group_shopping(rows, checked)
+        manual = [
+            dict(manual_id=row["id"], name=row["name"], qty=display_quantity(row["qty"]),
+                 unit=row["unit"], checked=bool(row["checked"]))
+            for row in conn.execute("SELECT * FROM manual_products ORDER BY name COLLATE NOCASE, id")
+        ]
+    return group_shopping(rows, checked) + manual
 
 
 def set_shopping_checked(name, unit, checked):
@@ -349,3 +355,24 @@ def set_shopping_checked(name, unit, checked):
                          (row for row in previous if shopping_key(*row) == key))
         if checked:
             conn.execute("INSERT OR IGNORE INTO shopping_checked (name, unit) VALUES (?, ?)", key)
+
+
+def save_manual_product(name, qty, unit, product_id=None):
+    with connection() as conn:
+        if product_id is None:
+            return conn.execute("INSERT INTO manual_products (name, qty, unit) VALUES (?, ?, ?)",
+                                (name, qty, unit)).lastrowid
+        updated = conn.execute("UPDATE manual_products SET name=?, qty=?, unit=? WHERE id=?",
+                               (name, qty, unit, product_id))
+        return product_id if updated.rowcount else None
+
+
+def check_manual_product(product_id, checked):
+    with connection() as conn:
+        return bool(conn.execute("UPDATE manual_products SET checked=? WHERE id=?",
+                                 (checked, product_id)).rowcount)
+
+
+def delete_manual_product(product_id):
+    with connection() as conn:
+        return bool(conn.execute("DELETE FROM manual_products WHERE id=?", (product_id,)).rowcount)

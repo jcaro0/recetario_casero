@@ -136,6 +136,39 @@ def api_shopping_check():
     return jsonify(ok=True)
 
 
+@app.post("/shopping-list/manual")
+@app.put("/shopping-list/manual/<int:product_id>")
+def api_save_manual_product(product_id=None):
+    data = json_data()
+    name = data.get("name")
+    unit = data.get("unit")
+    if not isinstance(name, str) or not (name := collapse_spaces(name)):
+        raise ValueError("El nombre del producto es obligatorio")
+    if unit is not None and not isinstance(unit, str):
+        raise ValueError("La unidad debe ser texto")
+    saved = db.save_manual_product(name, clean_quantity(data.get("qty")), collapse_spaces(unit) or None, product_id)
+    if saved is None:
+        return jsonify(error="Producto no encontrado"), 404
+    return jsonify(manual_id=saved), 201 if product_id is None else 200
+
+
+@app.patch("/shopping-list/manual/<int:product_id>")
+def api_check_manual_product(product_id):
+    checked = json_data().get("checked")
+    if not isinstance(checked, bool):
+        raise ValueError("'checked' debe ser true o false")
+    if not db.check_manual_product(product_id, checked):
+        return jsonify(error="Producto no encontrado"), 404
+    return jsonify(ok=True)
+
+
+@app.delete("/shopping-list/manual/<int:product_id>")
+def api_delete_manual_product(product_id):
+    if not db.delete_manual_product(product_id):
+        return jsonify(error="Producto no encontrado"), 404
+    return jsonify(ok=True)
+
+
 def clean_ingredients(raw):
     if not isinstance(raw, list):
         raise ValueError("Los ingredientes deben ser una lista")
